@@ -1,0 +1,264 @@
+type Query {
+  viewer: User
+  project(name: String!, entityName: String): Project
+  entity(name: String): Entity
+  serverInfo: ServerInfo
+}
+
+type Mutation {
+  upsertBucket(
+    input: UpsertBucketInput
+    id: String
+    name: String
+    entity: String
+    project: String
+    config: JSONString
+    summary: JSONString
+    state: String
+    host: String
+    program: String
+    commit: String
+    tags: [String!]
+    displayName: String
+    notes: String
+    groupName: String
+    jobType: String
+    sweepName: String
+    description: String
+  ): UpsertBucketPayload
+
+  createArtifact(input: CreateArtifactInput!): CreateArtifactPayload
+  commitArtifact(input: CommitArtifactInput!): CommitArtifactPayload
+  createArtifactManifest(input: CreateArtifactManifestInput!): CreateArtifactManifestPayload
+  createArtifactFiles(input: CreateArtifactFilesInput!): CreateArtifactFilesPayload
+  createRunFiles(input: CreateRunFilesInput!): CreateRunFilesPayload
+}
+
+scalar JSONString
+
+type User {
+  id: String!
+  username: String!
+  email: String!
+  entity: String!
+  flags: JSONString
+  teams: TeamConnection
+}
+
+type TeamConnection {
+  edges: [TeamEdge!]!
+}
+
+type TeamEdge {
+  node: Team!
+}
+
+type Team {
+  name: String!
+}
+
+type ServerInfo {
+  cliVersionInfo: String
+  latestLocalVersionInfo: VersionInfo
+  serverVersion: String
+  features: JSONString
+}
+
+type VersionInfo {
+  latestVersionString: String
+  versionOnThisInstanceString: String
+  outOfDate: Boolean
+}
+
+input UpsertBucketInput {
+  id: String
+  name: String
+  entity: String
+  entityName: String
+  project: String
+  modelName: String
+  config: JSONString
+  summary: JSONString
+  summaryMetrics: JSONString
+  state: String
+  host: String
+  program: String
+  commit: String
+  tags: [String!]
+  displayName: String
+  notes: String
+  groupName: String
+  jobType: String
+  sweepName: String
+  sweep: String
+  description: String
+  debug: Boolean
+  jobProgram: String
+  jobRepo: String
+}
+
+type UpsertBucketPayload {
+  bucket: Run
+  inserted: Boolean
+}
+
+type Project {
+  id: String!
+  name: String!
+  entity: Entity!
+  runs(first: Int, order: String): RunConnection
+}
+
+type Entity {
+  id: String!
+  name: String!
+}
+
+type RunConnection {
+  edges: [RunEdge!]!
+  pageInfo: PageInfo!
+}
+
+type RunEdge {
+  node: Run!
+  cursor: String!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  endCursor: String
+}
+
+type Run {
+  id: String!
+  name: String!
+  displayName: String
+  project: Project
+  config: JSONString
+  summaryMetrics: JSONString
+  state: String
+  host: String
+  program: String
+  commit: String
+  tags: [String!]
+  description: String
+  notes: String
+  group: String
+  jobType: String
+  sweepName: String
+  historyLineCount: Int
+  eventsLineCount: Int
+  logLineCount: Int
+  createdAt: String
+  updatedAt: String
+  heartbeatAt: String
+}
+
+input CreateArtifactInput {
+  entityName: String!
+  projectName: String!
+  runName: String!
+  artifactTypeName: String!
+  artifactCollectionName: String!
+  digest: String
+  description: String
+  metadata: JSONString
+  aliases: [ArtifactAliasInput!]
+  clientID: String
+}
+
+input ArtifactAliasInput {
+  artifactCollectionName: String!
+  alias: String!
+}
+
+type CreateArtifactPayload {
+  artifact: Artifact
+}
+
+type Artifact {
+  id: String!
+  state: String
+  currentManifest: ArtifactManifest
+}
+
+type ArtifactManifest {
+  id: String!
+  file: FileNode
+}
+
+type FileNode {
+  id: String!
+  directUrl: String
+}
+
+input CommitArtifactInput {
+  artifactID: String!
+  digest: String
+}
+
+type CommitArtifactPayload {
+  artifact: Artifact
+}
+
+input CreateArtifactManifestInput {
+  artifactID: String!
+  baseArtifactID: String
+  entityName: String!
+  projectName: String!
+  runName: String!
+  name: String!
+  digest: String!
+  type: Int
+}
+
+type CreateArtifactManifestPayload {
+  artifactManifest: ArtifactManifest
+}
+
+input CreateArtifactFilesInput {
+  artifactID: String!
+  artifactManifestID: String!
+  entityName: String!
+  projectName: String!
+  runName: String!
+  files: [CreateArtifactFileInput!]!
+}
+
+input CreateArtifactFileInput {
+  name: String!
+  md5: String
+  artifactManifestID: String
+}
+
+type CreateArtifactFilesPayload {
+  files: FileConnection
+}
+
+type FileConnection {
+  edges: [FileEdge!]!
+}
+
+type FileEdge {
+  node: FileUploadInfo!
+}
+
+type FileUploadInfo {
+  id: String!
+  name: String!
+  uploadUrl: String
+  uploadHeaders: [String!]!
+}
+
+input CreateRunFilesInput {
+  runName: String!
+  entityName: String!
+  projectName: String!
+  files: [String!]!
+}
+
+type CreateRunFilesPayload {
+  runID: String
+  files: [FileUploadInfo!]
+  uploadHeaders: [String!]
+}

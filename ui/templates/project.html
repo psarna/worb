@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Project.Name}} - worb</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1><a href="/" style="color: inherit;"><span>worb</span></a></h1>
+        </div>
+    </header>
+    <div class="container">
+        <div class="breadcrumb">
+            <a href="/">Projects</a> <span>/</span> <span style="color: var(--text);">{{.Project.Name}}</span>
+        </div>
+        <h2>Runs</h2>
+        {{if .Runs}}
+        <table>
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>State</th>
+                    <th>Steps</th>
+                    <th>Created</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Runs}}
+                <tr onclick="location.href='/runs/{{.ID}}'" style="cursor: pointer;">
+                    <td>
+                        <a href="/runs/{{.ID}}">{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Name}}{{end}}</a>
+                    </td>
+                    <td><span class="badge {{.State}}">{{.State}}</span></td>
+                    <td>{{.HistoryLineCount}}</td>
+                    <td style="color: var(--text-secondary);">{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <div class="empty-state">No runs yet.</div>
+        {{end}}
+    </div>
+</body>
+</html>

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>worb</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1><span>worb</span></h1>
+            <span style="color: var(--text-secondary); font-size: 13px;">WorB server</span>
+        </div>
+    </header>
+    <div class="container">
+        <h2>Projects</h2>
+        {{if .Projects}}
+        {{range .Projects}}
+        <a href="/projects/{{.ID}}" style="text-decoration: none; color: inherit;">
+            <div class="card">
+                <h3>{{.Name}}</h3>
+                <div class="meta">{{.Entity}} &middot; Created {{.CreatedAt.Format "2006-01-02 15:04"}}</div>
+            </div>
+        </a>
+        {{end}}
+        {{else}}
+        <div class="empty-state">
+            <p>No projects yet. Start a wandb run to see data here.</p>
+            <p style="margin-top: 8px; font-size: 13px;">
+                WANDB_BASE_URL=http://localhost:{{.Port}} WANDB_API_KEY=local wandb.init()
+            </p>
+        </div>
+        {{end}}
+    </div>
+</body>
+</html>

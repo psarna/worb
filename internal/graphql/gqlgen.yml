@@ -1,0 +1,21 @@
+schema:
+  - schema.graphqls
+
+exec:
+  filename: generated.go
+  package: graphql
+
+model:
+  filename: models_gen.go
+  package: graphql
+
+resolver:
+  layout: follow-schema
+  dir: .
+  package: graphql
+  filename_template: "{name}.resolvers.go"
+
+models:
+  JSONString:
+    model:
+      - github.com/99designs/gqlgen/graphql.String

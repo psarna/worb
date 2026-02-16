@@ -1,0 +1,25 @@
+<svg viewBox="0 0 100 130" width="200" height="260" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <style>
+      .orb-lines {
+        fill: none;
+        stroke: #2196F3;
+        stroke-width: 3;
+        stroke-linecap: round;
+      }
+    </style>
+  </defs>
+
+  <g transform="translate(0, 5)"> <circle cx="50" cy="50" r="45" class="orb-lines" stroke-width="3"/>
+
+      <line x1="50" y1="5" x2="50" y2="95" class="orb-lines" />
+      <path d="M50,5 Q 25,50 50,95" class="orb-lines" />
+      <path d="M50,5 Q 75,50 50,95" class="orb-lines" />
+
+      <path d="M13,25 Q 50,38 87,25" class="orb-lines" />
+      <path d="M5,50 Q 50,65 95,50" class="orb-lines" />
+      <path d="M13,75 Q 50,88 87,75" class="orb-lines" />
+  </g>
+
+  <text x="50" y="125" font-family="Arial, Helvetica, sans-serif" font-size="24" font-weight="bold" text-anchor="middle" fill="#2196F3">worb</text>
+</svg>

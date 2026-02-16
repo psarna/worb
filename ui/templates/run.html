@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{if .Run.DisplayName}}{{.Run.DisplayName}}{{else}}{{.Run.Name}}{{end}} - worb</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+    <header>
+        <div class="container">
+            <h1><a href="/" style="color: inherit;"><span>worb</span></a></h1>
+        </div>
+    </header>
+    <div class="container">
+        <div class="breadcrumb">
+            <a href="/">Projects</a>
+            <span>/</span>
+            <a href="/projects/{{.Project.ID}}">{{.Project.Name}}</a>
+            <span>/</span>
+            <span style="color: var(--text);">{{if .Run.DisplayName}}{{.Run.DisplayName}}{{else}}{{.Run.Name}}{{end}}</span>
+        </div>
+
+        <div class="run-header">
+            <h2 style="margin-bottom: 0;">{{if .Run.DisplayName}}{{.Run.DisplayName}}{{else}}{{.Run.Name}}{{end}}</h2>
+            <span class="badge {{.Run.State}}">{{.Run.State}}</span>
+        </div>
+
+        <div class="tabs">
+            <div class="tab active" data-tab="charts">Charts</div>
+            <div class="tab" data-tab="config">Config</div>
+            <div class="tab" data-tab="summary">Summary</div>
+            <div class="tab" data-tab="logs">Logs</div>
+        </div>
+
+        <div id="charts" class="tab-content active">
+            <div class="chart-grid" id="chart-grid"></div>
+            <div class="empty-state" id="no-charts" style="display:none;">No metrics logged yet.</div>
+        </div>
+
+        <div id="config" class="tab-content">
+            <table class="config-table" id="config-table">
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div id="summary" class="tab-content">
+            <table class="config-table" id="summary-table">
+                <tbody></tbody>
+            </table>
+        </div>
+
+        <div id="logs" class="tab-content">
+            <div class="logs-container" id="logs-container">Loading...</div>
+        </div>
+    </div>
+
+    <script>
+    const runID = "{{.Run.ID}}";
+
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById(tab.dataset.tab).classList.add('active');
+        });
+    });
+
+    async function loadCharts() {
+        const resp = await fetch(`/api/runs/${runID}/history`);
+        const history = await resp.json();
+        if (!history || history.length === 0) {
+            document.getElementById('no-charts').style.display = 'block';
+            return;
+        }
+
+        const metrics = {};
+        history.forEach(h => {
+            const data = typeof h.Data === 'string' ? JSON.parse(h.Data) : h.Data;
+            Object.keys(data).forEach(key => {
+                if (key.startsWith('_')) return;
+                const val = data[key];
+                if (typeof val !== 'number') return;
+                if (!metrics[key]) metrics[key] = [];
+                metrics[key].push({ step: h.Step, value: val });
+            });
+        });
+
+        const grid = document.getElementById('chart-grid');
+        Object.keys(metrics).sort().forEach(key => {
+            const div = document.createElement('div');
+            div.className = 'chart-container';
+            div.innerHTML = `<div class="chart-title">${key}</div><canvas id="chart-${key.replace(/[^a-zA-Z0-9]/g, '_')}"></canvas>`;
+            grid.appendChild(div);
+
+            const points = metrics[key];
+            new Chart(div.querySelector('canvas'), {
+                type: 'line',
+                data: {
+                    labels: points.map(p => p.step),
+                    datasets: [{
+                        label: key,
+                        data: points.map(p => p.value),
+                        borderColor: '#58a6ff',
+                        backgroundColor: 'rgba(88,166,255,0.1)',
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        tension: 0.1,
+                        fill: true,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { title: { display: true, text: 'step', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                        y: { title: { display: true, text: key, color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                    },
+                    animation: false,
+                }
+            });
+        });
+    }
+
+    function renderTable(tableId, obj) {
+        const tbody = document.querySelector(`#${tableId} tbody`);
+        if (!obj || Object.keys(obj).length === 0) {
+            tbody.innerHTML = '<tr><td colspan="2" style="color: var(--text-secondary); text-align: center;">Empty</td></tr>';
+            return;
+        }
+        Object.keys(obj).sort().forEach(key => {
+            const tr = document.createElement('tr');
+            let val = obj[key];
+            if (typeof val === 'object') val = JSON.stringify(val);
+            tr.innerHTML = `<th>${key}</th><td>${val}</td>`;
+            tbody.appendChild(tr);
+        });
+    }
+
+    async function loadConfig() {
+        const config = {{.ConfigJSON}};
+        renderTable('config-table', config);
+    }
+
+    async function loadSummary() {
+        const summary = {{.SummaryJSON}};
+        renderTable('summary-table', summary);
+    }
+
+    async function loadLogs() {
+        const resp = await fetch(`/api/runs/${runID}/logs`);
+        const logs = await resp.json();
+        const container = document.getElementById('logs-container');
+        if (!logs || logs.length === 0) {
+            container.textContent = 'No logs.';
+            return;
+        }
+        container.textContent = logs.join('\n');
+    }
+
+    loadCharts();
+    loadConfig();
+    loadSummary();
+    loadLogs();
+    </script>
+</body>
+</html>

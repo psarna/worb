@@ -1,0 +1,5 @@
+worb
+.testdata/
+wandb/
+*.duckdb
+*.duckdb.wal
