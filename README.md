@@ -35,3 +35,11 @@ go build -o worb .
 |------|---------|-------------|
 | `-port` | `8080` | Port to listen on |
 | `-data` | `~/.worb` | Data directory for DuckDB and uploaded files |
+
+## Demo
+
+![](img/1.png)
+![](img/2.png)
+![](img/3.png)
+![](img/4.png)
+
