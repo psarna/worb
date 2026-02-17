@@ -9,7 +9,7 @@ Local, single-binary server compatible with the standard `wandb` Python client. 
 ## Usage
 
 ```bash
-./worb -port 8080 -data ~/.worb
+./worb --port 8080 --data ~/.worb
 ```
 
 ```python
@@ -37,8 +37,8 @@ go build -o worb .
 
 | Flag | Default | Description |
 |------|---------|-------------|
-| `-port` | `8080` | Port to listen on |
-| `-data` | `~/.worb` | Data directory for DuckDB and uploaded files |
+| `--port` | `8080` | Port to listen on |
+| `--data` | `~/.worb` | Data directory for DuckDB and uploaded files |
 
 ## Demo
 
