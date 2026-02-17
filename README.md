@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="worb.svg" width="100" height="100" alt="worb logo">
+</p>
+
 # worb
 
 Local, single-binary server compatible with the standard `wandb` Python client. Also, a bad pun.
