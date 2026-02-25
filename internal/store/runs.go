@@ -101,6 +101,16 @@ func (db *DB) UpsertRun(p UpsertRunParams) (*Run, error) {
 
 	var existing string
 	err := db.QueryRow("SELECT id FROM runs WHERE id = ?", p.ID).Scan(&existing)
+	if err == sql.ErrNoRows && p.Name != "" {
+		proj, projErr := db.EnsureProject(p.Entity, p.Project)
+		if projErr == nil {
+			lookupErr := db.QueryRow("SELECT id FROM runs WHERE project_id = ? AND name = ?", proj.ID, p.Name).Scan(&existing)
+			if lookupErr == nil {
+				p.ID = existing
+				err = nil
+			}
+		}
+	}
 	if err == sql.ErrNoRows {
 		proj, projErr := db.EnsureProject(p.Entity, p.Project)
 		if projErr != nil {

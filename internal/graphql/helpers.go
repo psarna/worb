@@ -63,5 +63,9 @@ func storeRunToGQL(r *store.Run) *Run {
 	gqlRun.UpdatedAt = &updatedAt
 	gqlRun.HeartbeatAt = &heartbeatAt
 
+	emptyArr := "[]"
+	gqlRun.HistoryTail = &emptyArr
+	gqlRun.EventsTail = &emptyArr
+
 	return gqlRun
 }

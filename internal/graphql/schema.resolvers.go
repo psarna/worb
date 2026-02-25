@@ -280,6 +280,18 @@ func (r *mutationResolver) CreateRunFiles(ctx context.Context, input CreateRunFi
 	}, nil
 }
 
+// Bucket is the resolver for the bucket field.
+func (r *projectResolver) Bucket(ctx context.Context, obj *Project, name string, missingOk *bool) (*Run, error) {
+	run, err := r.Store.GetRunByName(obj.ID, name)
+	if err != nil {
+		if missingOk != nil && *missingOk {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return storeRunToGQL(run), nil
+}
+
 // Viewer is the resolver for the viewer field.
 func (r *queryResolver) Viewer(ctx context.Context) (*User, error) {
 	flags := "{}"
@@ -335,6 +347,32 @@ func (r *queryResolver) Project(ctx context.Context, name string, entityName *st
 	}, nil
 }
 
+// Model is the resolver for the model field.
+func (r *queryResolver) Model(ctx context.Context, name *string, entityName *string) (*Project, error) {
+	projectName := "default"
+	if name != nil {
+		projectName = *name
+	}
+	entity := "local"
+	if entityName != nil {
+		entity = *entityName
+	}
+
+	proj, err := r.Store.EnsureProject(entity, projectName)
+	if err != nil {
+		return nil, err
+	}
+
+	return &Project{
+		ID:   proj.ID,
+		Name: proj.Name,
+		Entity: &Entity{
+			ID:   entity,
+			Name: entity,
+		},
+	}, nil
+}
+
 // Entity is the resolver for the entity field.
 func (r *queryResolver) Entity(ctx context.Context, name *string) (*Entity, error) {
 	n := "local"
@@ -358,11 +396,63 @@ func (r *queryResolver) ServerInfo(ctx context.Context) (*ServerInfo, error) {
 	}, nil
 }
 
+// WandbConfig is the resolver for the wandbConfig field.
+func (r *runResolver) WandbConfig(ctx context.Context, obj *Run, keys []string) (*string, error) {
+	if obj.Config == nil {
+		empty := "{}"
+		return &empty, nil
+	}
+
+	var config map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(*obj.Config), &config); err != nil {
+		empty := "{}"
+		return &empty, nil
+	}
+
+	wandbRaw, ok := config["_wandb"]
+	if !ok {
+		empty := "{}"
+		return &empty, nil
+	}
+
+	var wandbWrapper struct {
+		Value map[string]json.RawMessage `json:"value"`
+	}
+	if err := json.Unmarshal(wandbRaw, &wandbWrapper); err != nil {
+		empty := "{}"
+		return &empty, nil
+	}
+
+	if len(keys) == 0 {
+		result, _ := json.Marshal(wandbWrapper.Value)
+		s := string(result)
+		return &s, nil
+	}
+
+	filtered := make(map[string]json.RawMessage)
+	for _, k := range keys {
+		if v, exists := wandbWrapper.Value[k]; exists {
+			filtered[k] = v
+		}
+	}
+	result, _ := json.Marshal(filtered)
+	s := string(result)
+	return &s, nil
+}
+
 // Mutation returns MutationResolver implementation.
 func (r *Resolver) Mutation() MutationResolver { return &mutationResolver{r} }
+
+// Project returns ProjectResolver implementation.
+func (r *Resolver) Project() ProjectResolver { return &projectResolver{r} }
 
 // Query returns QueryResolver implementation.
 func (r *Resolver) Query() QueryResolver { return &queryResolver{r} }
 
+// Run returns RunResolver implementation.
+func (r *Resolver) Run() RunResolver { return &runResolver{r} }
+
 type mutationResolver struct{ *Resolver }
+type projectResolver struct{ *Resolver }
 type queryResolver struct{ *Resolver }
+type runResolver struct{ *Resolver }

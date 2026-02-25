@@ -22,7 +22,7 @@ func (db *DB) InsertHistory(runID string, step int, data json.RawMessage) error 
 }
 
 func (db *DB) GetHistory(runID string) ([]HistoryRow, error) {
-	rows, err := db.Query("SELECT run_id, step, CAST(data AS VARCHAR), timestamp FROM history WHERE run_id = ? ORDER BY step", runID)
+	rows, err := db.Query("SELECT run_id, step, CAST(data AS VARCHAR), timestamp FROM history WHERE run_id = ? ORDER BY timestamp, step", runID)
 	if err != nil {
 		return nil, err
 	}

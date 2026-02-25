@@ -13,11 +13,12 @@ Local, single-binary server compatible with the standard `wandb` Python client. 
 ```
 
 ```python
-import wandb
 import os
+import wandb
 
+os.environ["WANDB_DIR"] = "worb"
 os.environ["WANDB_BASE_URL"] = "http://localhost:8080"
-os.environ["WANDB_API_KEY"] = "local-dev-key"
+os.environ["WANDB_API_KEY"] = "dev-"+40*"f"
 
 wandb.init(project="test-project", name="test-run")
 for i in range(100):

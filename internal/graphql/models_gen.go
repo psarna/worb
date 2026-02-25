@@ -129,6 +129,7 @@ type Project struct {
 	Name   string         `json:"name"`
 	Entity *Entity        `json:"entity"`
 	Runs   *RunConnection `json:"runs,omitempty"`
+	Bucket *Run           `json:"bucket,omitempty"`
 }
 
 type Query struct {
@@ -157,6 +158,9 @@ type Run struct {
 	CreatedAt        *string  `json:"createdAt,omitempty"`
 	UpdatedAt        *string  `json:"updatedAt,omitempty"`
 	HeartbeatAt      *string  `json:"heartbeatAt,omitempty"`
+	HistoryTail      *string  `json:"historyTail,omitempty"`
+	EventsTail       *string  `json:"eventsTail,omitempty"`
+	WandbConfig      *string  `json:"wandbConfig,omitempty"`
 }
 
 type RunConnection struct {

@@ -78,15 +78,25 @@
         }
 
         const metrics = {};
+        const stepKeys = new Set();
         history.forEach(h => {
             const data = typeof h.Data === 'string' ? JSON.parse(h.Data) : h.Data;
+            const xVal = data['step'] != null ? data['step'] : h.Step;
+            if (data['step'] != null) stepKeys.add('step');
             Object.keys(data).forEach(key => {
                 if (key.startsWith('_')) return;
                 const val = data[key];
                 if (typeof val !== 'number') return;
                 if (!metrics[key]) metrics[key] = [];
-                metrics[key].push({ step: h.Step, value: val });
+                metrics[key].push({ step: xVal, value: val });
             });
+        });
+        stepKeys.forEach(k => delete metrics[k]);
+        Object.keys(metrics).forEach(key => {
+            const byStep = new Map();
+            metrics[key].forEach(p => byStep.set(p.step, p.value));
+            metrics[key] = Array.from(byStep, ([step, value]) => ({ step, value }))
+                .sort((a, b) => a.step - b.step);
         });
 
         const grid = document.getElementById('chart-grid');
@@ -141,7 +151,15 @@
     }
 
     async function loadConfig() {
-        const config = {{.ConfigJSON}};
+        const raw = {{.ConfigJSON}};
+        const config = {};
+        if (raw) {
+            Object.keys(raw).forEach(key => {
+                if (key.startsWith('_')) return;
+                const entry = raw[key];
+                config[key] = (entry && typeof entry === 'object' && 'value' in entry) ? entry.value : entry;
+            });
+        }
         renderTable('config-table', config);
     }
 

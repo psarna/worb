@@ -1,6 +1,7 @@
 type Query {
   viewer: User
   project(name: String!, entityName: String): Project
+  model(name: String, entityName: String): Project
   entity(name: String): Entity
   serverInfo: ServerInfo
 }
@@ -107,6 +108,7 @@ type Project {
   name: String!
   entity: Entity!
   runs(first: Int, order: String): RunConnection
+  bucket(name: String!, missingOk: Boolean): Run
 }
 
 type Entity {
@@ -152,6 +154,9 @@ type Run {
   createdAt: String
   updatedAt: String
   heartbeatAt: String
+  historyTail: String
+  eventsTail: String
+  wandbConfig(keys: [String!]): JSONString
 }
 
 input CreateArtifactInput {

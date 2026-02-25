@@ -19,3 +19,11 @@ models:
   JSONString:
     model:
       - github.com/99designs/gqlgen/graphql.String
+  Project:
+    fields:
+      bucket:
+        resolver: true
+  Run:
+    fields:
+      wandbConfig:
+        resolver: true
