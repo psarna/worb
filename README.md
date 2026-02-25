@@ -41,6 +41,10 @@ go build -o worb .
 | `--port` | `8080` | Port to listen on |
 | `--data` | `~/.worb` | Data directory for DuckDB and uploaded files |
 
+## Backup
+
+All data lives in a single DuckDB file (`~/.worb/worb.duckdb`). To back it up, just copy the file — no export tools or dump commands needed.
+
 ## Demo
 
 ![](img/1.png)
