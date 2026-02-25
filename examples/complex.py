@@ -3,8 +3,8 @@ import math
 import random
 import wandb
 
-os.environ["WANDB_BASE_URL"] = "http://localhost:8080"
-os.environ["WANDB_API_KEY"] = "dev-" + 40 * "f"
+os.environ.setdefault("WANDB_BASE_URL", "http://localhost:8080")
+os.environ.setdefault("WANDB_API_KEY", "dev-" + 40 * "f")
 
 run = wandb.init(project="complex-run", config={
     "learning_rate": 3e-4,

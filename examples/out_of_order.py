@@ -1,8 +1,8 @@
 import os
 import wandb
 
-os.environ["WANDB_BASE_URL"] = "http://localhost:8080"
-os.environ["WANDB_API_KEY"] = "dev-"+40*"f"
+os.environ.setdefault("WANDB_BASE_URL", "http://localhost:8080")
+os.environ.setdefault("WANDB_API_KEY", "dev-" + 40 * "f")
 
 run = wandb.init(project="test")
 run_id = run.id
