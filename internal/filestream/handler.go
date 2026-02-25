@@ -65,14 +65,21 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	for filename, file := range req.Files {
 		switch {
 		case filename == "wandb-history.jsonl":
+			var batch []struct {
+				Step int
+				Data json.RawMessage
+			}
 			for i, line := range file.Content {
-				step := file.Offset + i
 				if strings.TrimSpace(line) == "" {
 					continue
 				}
-				if err := h.Store.InsertHistory(run.ID, step, json.RawMessage(line)); err != nil {
-					log.Printf("insert history step %d: %v", step, err)
-				}
+				batch = append(batch, struct {
+					Step int
+					Data json.RawMessage
+				}{Step: file.Offset + i, Data: json.RawMessage(line)})
+			}
+			if err := h.Store.InsertHistoryBatch(run.ID, batch); err != nil {
+				log.Printf("insert history batch: %v", err)
 			}
 
 		case filename == "wandb-summary.json":
@@ -86,22 +93,36 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 
 		case filename == "wandb-events.jsonl":
+			var batch []struct {
+				LineNum int
+				Data    json.RawMessage
+			}
 			for i, line := range file.Content {
-				lineNum := file.Offset + i
 				if strings.TrimSpace(line) == "" {
 					continue
 				}
-				if err := h.Store.InsertSystemEvent(run.ID, lineNum, json.RawMessage(line)); err != nil {
-					log.Printf("insert event %d: %v", lineNum, err)
-				}
+				batch = append(batch, struct {
+					LineNum int
+					Data    json.RawMessage
+				}{LineNum: file.Offset + i, Data: json.RawMessage(line)})
+			}
+			if err := h.Store.InsertSystemEventBatch(run.ID, batch); err != nil {
+				log.Printf("insert events batch: %v", err)
 			}
 
 		case filename == "output.log":
+			var batch []struct {
+				LineNum int
+				Line    string
+			}
 			for i, line := range file.Content {
-				lineNum := file.Offset + i
-				if err := h.Store.InsertConsoleLog(run.ID, lineNum, line, "stdout"); err != nil {
-					log.Printf("insert log %d: %v", lineNum, err)
-				}
+				batch = append(batch, struct {
+					LineNum int
+					Line    string
+				}{LineNum: file.Offset + i, Line: line})
+			}
+			if err := h.Store.InsertConsoleLogBatch(run.ID, batch); err != nil {
+				log.Printf("insert logs batch: %v", err)
 			}
 		}
 	}
