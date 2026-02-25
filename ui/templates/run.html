@@ -114,13 +114,20 @@
         let buffer = '';
         let renderPending = false;
 
+        function dedupeSorted(points) {
+            const byStep = new Map();
+            for (const p of points) byStep.set(p.step, p.value);
+            return Array.from(byStep, ([step, value]) => ({ step, value }))
+                .sort((a, b) => a.step - b.step);
+        }
+
         function scheduleRender() {
             if (renderPending) return;
             renderPending = true;
             requestAnimationFrame(() => {
                 renderPending = false;
                 for (const key of Object.keys(metrics)) {
-                    const points = metrics[key];
+                    const points = dedupeSorted(metrics[key]);
                     if (charts[key]) {
                         charts[key].data.labels = points.map(p => p.step);
                         charts[key].data.datasets[0].data = points.map(p => p.value);
