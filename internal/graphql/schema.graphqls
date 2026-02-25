@@ -62,7 +62,12 @@ type ServerInfo {
   cliVersionInfo: String
   latestLocalVersionInfo: VersionInfo
   serverVersion: String
-  features: JSONString
+  features: [Feature!]
+}
+
+type Feature {
+  name: String!
+  isEnabled: Boolean!
 }
 
 type VersionInfo {
@@ -114,6 +119,13 @@ type Project {
 type Entity {
   id: String!
   name: String!
+  organization: Organization
+}
+
+type Organization {
+  id: String!
+  name: String!
+  coreWeaveOrganizationId: String
 }
 
 type RunConnection {

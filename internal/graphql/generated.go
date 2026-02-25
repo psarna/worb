@@ -82,8 +82,14 @@ type ComplexityRoot struct {
 	}
 
 	Entity struct {
-		ID   func(childComplexity int) int
-		Name func(childComplexity int) int
+		ID           func(childComplexity int) int
+		Name         func(childComplexity int) int
+		Organization func(childComplexity int) int
+	}
+
+	Feature struct {
+		IsEnabled func(childComplexity int) int
+		Name      func(childComplexity int) int
 	}
 
 	FileConnection struct {
@@ -113,6 +119,12 @@ type ComplexityRoot struct {
 		CreateArtifactManifest func(childComplexity int, input CreateArtifactManifestInput) int
 		CreateRunFiles         func(childComplexity int, input CreateRunFilesInput) int
 		UpsertBucket           func(childComplexity int, input *UpsertBucketInput, id *string, name *string, entity *string, project *string, config *string, summary *string, state *string, host *string, program *string, commit *string, tags []string, displayName *string, notes *string, groupName *string, jobType *string, sweepName *string, description *string) int
+	}
+
+	Organization struct {
+		CoreWeaveOrganizationID func(childComplexity int) int
+		ID                      func(childComplexity int) int
+		Name                    func(childComplexity int) int
 	}
 
 	PageInfo struct {
@@ -346,6 +358,25 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Entity.Name(childComplexity), true
+	case "Entity.organization":
+		if e.complexity.Entity.Organization == nil {
+			break
+		}
+
+		return e.complexity.Entity.Organization(childComplexity), true
+
+	case "Feature.isEnabled":
+		if e.complexity.Feature.IsEnabled == nil {
+			break
+		}
+
+		return e.complexity.Feature.IsEnabled(childComplexity), true
+	case "Feature.name":
+		if e.complexity.Feature.Name == nil {
+			break
+		}
+
+		return e.complexity.Feature.Name(childComplexity), true
 
 	case "FileConnection.edges":
 		if e.complexity.FileConnection.Edges == nil {
@@ -465,6 +496,25 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Mutation.UpsertBucket(childComplexity, args["input"].(*UpsertBucketInput), args["id"].(*string), args["name"].(*string), args["entity"].(*string), args["project"].(*string), args["config"].(*string), args["summary"].(*string), args["state"].(*string), args["host"].(*string), args["program"].(*string), args["commit"].(*string), args["tags"].([]string), args["displayName"].(*string), args["notes"].(*string), args["groupName"].(*string), args["jobType"].(*string), args["sweepName"].(*string), args["description"].(*string)), true
+
+	case "Organization.coreWeaveOrganizationId":
+		if e.complexity.Organization.CoreWeaveOrganizationID == nil {
+			break
+		}
+
+		return e.complexity.Organization.CoreWeaveOrganizationID(childComplexity), true
+	case "Organization.id":
+		if e.complexity.Organization.ID == nil {
+			break
+		}
+
+		return e.complexity.Organization.ID(childComplexity), true
+	case "Organization.name":
+		if e.complexity.Organization.Name == nil {
+			break
+		}
+
+		return e.complexity.Organization.Name(childComplexity), true
 
 	case "PageInfo.endCursor":
 		if e.complexity.PageInfo.EndCursor == nil {
@@ -1749,6 +1799,101 @@ func (ec *executionContext) fieldContext_Entity_name(_ context.Context, field gr
 	return fc, nil
 }
 
+func (ec *executionContext) _Entity_organization(ctx context.Context, field graphql.CollectedField, obj *Entity) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Entity_organization,
+		func(ctx context.Context) (any, error) {
+			return obj.Organization, nil
+		},
+		nil,
+		ec.marshalOOrganization2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐOrganization,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Entity_organization(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Entity",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Organization_id(ctx, field)
+			case "name":
+				return ec.fieldContext_Organization_name(ctx, field)
+			case "coreWeaveOrganizationId":
+				return ec.fieldContext_Organization_coreWeaveOrganizationId(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Organization", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Feature_name(ctx context.Context, field graphql.CollectedField, obj *Feature) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Feature_name,
+		func(ctx context.Context) (any, error) {
+			return obj.Name, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Feature_name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Feature",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Feature_isEnabled(ctx context.Context, field graphql.CollectedField, obj *Feature) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Feature_isEnabled,
+		func(ctx context.Context) (any, error) {
+			return obj.IsEnabled, nil
+		},
+		nil,
+		ec.marshalNBoolean2bool,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Feature_isEnabled(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Feature",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _FileConnection_edges(ctx context.Context, field graphql.CollectedField, obj *FileConnection) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -2271,6 +2416,93 @@ func (ec *executionContext) fieldContext_Mutation_createRunFiles(ctx context.Con
 	return fc, nil
 }
 
+func (ec *executionContext) _Organization_id(ctx context.Context, field graphql.CollectedField, obj *Organization) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Organization_id,
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Organization_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Organization",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Organization_name(ctx context.Context, field graphql.CollectedField, obj *Organization) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Organization_name,
+		func(ctx context.Context) (any, error) {
+			return obj.Name, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_Organization_name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Organization",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Organization_coreWeaveOrganizationId(ctx context.Context, field graphql.CollectedField, obj *Organization) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Organization_coreWeaveOrganizationId,
+		func(ctx context.Context) (any, error) {
+			return obj.CoreWeaveOrganizationID, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Organization_coreWeaveOrganizationId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Organization",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _PageInfo_hasNextPage(ctx context.Context, field graphql.CollectedField, obj *PageInfo) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -2415,6 +2647,8 @@ func (ec *executionContext) fieldContext_Project_entity(_ context.Context, field
 				return ec.fieldContext_Entity_id(ctx, field)
 			case "name":
 				return ec.fieldContext_Entity_name(ctx, field)
+			case "organization":
+				return ec.fieldContext_Entity_organization(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Entity", field.Name)
 		},
@@ -2739,6 +2973,8 @@ func (ec *executionContext) fieldContext_Query_entity(ctx context.Context, field
 				return ec.fieldContext_Entity_id(ctx, field)
 			case "name":
 				return ec.fieldContext_Entity_name(ctx, field)
+			case "organization":
+				return ec.fieldContext_Entity_organization(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Entity", field.Name)
 		},
@@ -3938,7 +4174,7 @@ func (ec *executionContext) _ServerInfo_features(ctx context.Context, field grap
 			return obj.Features, nil
 		},
 		nil,
-		ec.marshalOJSONString2ᚖstring,
+		ec.marshalOFeature2ᚕᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐFeatureᚄ,
 		true,
 		false,
 	)
@@ -3951,7 +4187,13 @@ func (ec *executionContext) fieldContext_ServerInfo_features(_ context.Context, 
 		IsMethod:   false,
 		IsResolver: false,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type JSONString does not have child fields")
+			switch field.Name {
+			case "name":
+				return ec.fieldContext_Feature_name(ctx, field)
+			case "isEnabled":
+				return ec.fieldContext_Feature_isEnabled(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Feature", field.Name)
 		},
 	}
 	return fc, nil
@@ -6743,6 +6985,52 @@ func (ec *executionContext) _Entity(ctx context.Context, sel ast.SelectionSet, o
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "organization":
+			out.Values[i] = ec._Entity_organization(ctx, field, obj)
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var featureImplementors = []string{"Feature"}
+
+func (ec *executionContext) _Feature(ctx context.Context, sel ast.SelectionSet, obj *Feature) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, featureImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Feature")
+		case "name":
+			out.Values[i] = ec._Feature_name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "isEnabled":
+			out.Values[i] = ec._Feature_isEnabled(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -6979,6 +7267,52 @@ func (ec *executionContext) _Mutation(ctx context.Context, sel ast.SelectionSet)
 			out.Values[i] = ec.OperationContext.RootResolverMiddleware(innerCtx, func(ctx context.Context) (res graphql.Marshaler) {
 				return ec._Mutation_createRunFiles(ctx, field)
 			})
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var organizationImplementors = []string{"Organization"}
+
+func (ec *executionContext) _Organization(ctx context.Context, sel ast.SelectionSet, obj *Organization) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, organizationImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("Organization")
+		case "id":
+			out.Values[i] = ec._Organization_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "name":
+			out.Values[i] = ec._Organization_name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "coreWeaveOrganizationId":
+			out.Values[i] = ec._Organization_coreWeaveOrganizationId(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -8187,6 +8521,16 @@ func (ec *executionContext) marshalNEntity2ᚖgithubᚗcomᚋsarnaᚋworbᚋinte
 	return ec._Entity(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalNFeature2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐFeature(ctx context.Context, sel ast.SelectionSet, v *Feature) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._Feature(ctx, sel, v)
+}
+
 func (ec *executionContext) marshalNFileEdge2ᚕᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐFileEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*FileEdge) graphql.Marshaler {
 	ret := make(graphql.Array, len(v))
 	var wg sync.WaitGroup
@@ -8792,6 +9136,53 @@ func (ec *executionContext) marshalOEntity2ᚖgithubᚗcomᚋsarnaᚋworbᚋinte
 	return ec._Entity(ctx, sel, v)
 }
 
+func (ec *executionContext) marshalOFeature2ᚕᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐFeatureᚄ(ctx context.Context, sel ast.SelectionSet, v []*Feature) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNFeature2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐFeature(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
 func (ec *executionContext) marshalOFileConnection2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐFileConnection(ctx context.Context, sel ast.SelectionSet, v *FileConnection) graphql.Marshaler {
 	if v == nil {
 		return graphql.Null
@@ -8887,6 +9278,13 @@ func (ec *executionContext) marshalOJSONString2ᚖstring(ctx context.Context, se
 	_ = ctx
 	res := graphql.MarshalString(*v)
 	return res
+}
+
+func (ec *executionContext) marshalOOrganization2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐOrganization(ctx context.Context, sel ast.SelectionSet, v *Organization) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._Organization(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalOProject2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐProject(ctx context.Context, sel ast.SelectionSet, v *Project) graphql.Marshaler {

@@ -148,8 +148,9 @@ func (r *mutationResolver) UpsertBucket(ctx context.Context, input *UpsertBucket
 			ID:   proj.ID,
 			Name: proj.Name,
 			Entity: &Entity{
-				ID:   proj.Entity,
-				Name: proj.Entity,
+				ID:           proj.Entity,
+				Name:         proj.Entity,
+				Organization: &Organization{ID: proj.Entity, Name: proj.Entity},
 			},
 		}
 	}
@@ -337,8 +338,9 @@ func (r *queryResolver) Project(ctx context.Context, name string, entityName *st
 		ID:   proj.ID,
 		Name: proj.Name,
 		Entity: &Entity{
-			ID:   entity,
-			Name: entity,
+			ID:           entity,
+			Name:         entity,
+			Organization: &Organization{ID: entity, Name: entity},
 		},
 		Runs: &RunConnection{
 			Edges:    edges,
@@ -367,8 +369,9 @@ func (r *queryResolver) Model(ctx context.Context, name *string, entityName *str
 		ID:   proj.ID,
 		Name: proj.Name,
 		Entity: &Entity{
-			ID:   entity,
-			Name: entity,
+			ID:           entity,
+			Name:         entity,
+			Organization: &Organization{ID: entity, Name: entity},
 		},
 	}, nil
 }
@@ -379,7 +382,7 @@ func (r *queryResolver) Entity(ctx context.Context, name *string) (*Entity, erro
 	if name != nil {
 		n = *name
 	}
-	return &Entity{ID: n, Name: n}, nil
+	return &Entity{ID: n, Name: n, Organization: &Organization{ID: n, Name: n}}, nil
 }
 
 // ServerInfo is the resolver for the serverInfo field.
@@ -393,6 +396,7 @@ func (r *queryResolver) ServerInfo(ctx context.Context) (*ServerInfo, error) {
 			VersionOnThisInstanceString: &version,
 			OutOfDate:                   &outOfDate,
 		},
+		Features: []*Feature{},
 	}, nil
 }
 

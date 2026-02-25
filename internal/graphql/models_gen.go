@@ -92,8 +92,14 @@ type CreateRunFilesPayload struct {
 }
 
 type Entity struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID           string        `json:"id"`
+	Name         string        `json:"name"`
+	Organization *Organization `json:"organization,omitempty"`
+}
+
+type Feature struct {
+	Name      string `json:"name"`
+	IsEnabled bool   `json:"isEnabled"`
 }
 
 type FileConnection struct {
@@ -117,6 +123,12 @@ type FileUploadInfo struct {
 }
 
 type Mutation struct {
+}
+
+type Organization struct {
+	ID                      string  `json:"id"`
+	Name                    string  `json:"name"`
+	CoreWeaveOrganizationID *string `json:"coreWeaveOrganizationId,omitempty"`
 }
 
 type PageInfo struct {
@@ -177,7 +189,7 @@ type ServerInfo struct {
 	CliVersionInfo         *string      `json:"cliVersionInfo,omitempty"`
 	LatestLocalVersionInfo *VersionInfo `json:"latestLocalVersionInfo,omitempty"`
 	ServerVersion          *string      `json:"serverVersion,omitempty"`
-	Features               *string      `json:"features,omitempty"`
+	Features               []*Feature   `json:"features,omitempty"`
 }
 
 type Team struct {
