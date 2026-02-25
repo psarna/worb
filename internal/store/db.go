@@ -33,6 +33,53 @@ func New(dataDir string) (*DB, error) {
 	return store, nil
 }
 
+type QueryResult struct {
+	Columns []string        `json:"columns"`
+	Rows    [][]interface{} `json:"rows"`
+}
+
+func (db *DB) ExecuteQuery(query string) (*QueryResult, error) {
+	rows, err := db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+
+	result := &QueryResult{Columns: cols}
+
+	for rows.Next() {
+		vals := make([]interface{}, len(cols))
+		ptrs := make([]interface{}, len(cols))
+		for i := range vals {
+			ptrs[i] = &vals[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			return nil, err
+		}
+		row := make([]interface{}, len(cols))
+		for i, v := range vals {
+			switch val := v.(type) {
+			case []byte:
+				row[i] = string(val)
+			default:
+				row[i] = val
+			}
+		}
+		result.Rows = append(result.Rows, row)
+	}
+
+	if result.Rows == nil {
+		result.Rows = [][]interface{}{}
+	}
+
+	return result, rows.Err()
+}
+
 func (db *DB) migrate() error {
 	migrations := []string{
 		`CREATE TABLE IF NOT EXISTS projects (

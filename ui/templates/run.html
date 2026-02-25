@@ -7,6 +7,8 @@
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/svg+xml" href="/static/worb.svg">
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2"></script>
 </head>
 <body>
     <header>
@@ -33,6 +35,7 @@
             <div class="tab" data-tab="config">Config</div>
             <div class="tab" data-tab="summary">Summary</div>
             <div class="tab" data-tab="logs">Logs</div>
+            <div class="tab" data-tab="console">Console</div>
         </div>
 
         <div id="charts" class="tab-content active">
@@ -55,10 +58,33 @@
         <div id="logs" class="tab-content">
             <div class="logs-container" id="logs-container">Loading...</div>
         </div>
+
+        <div id="console" class="tab-content">
+            <div class="console-container">
+                <div class="console-editor">
+                    <textarea id="sql-input" spellcheck="false">SELECT
+  r.name,
+  r.display_name,
+  r.state,
+  r.history_line_count,
+  r.created_at
+FROM runs r
+ORDER BY r.created_at DESC
+LIMIT 20</textarea>
+                    <div class="console-actions">
+                        <button id="run-query-btn" onclick="runQuery()">Run Query</button>
+                        <span id="query-status" class="query-status"></span>
+                    </div>
+                </div>
+                <div id="query-results" class="query-results"></div>
+            </div>
+        </div>
     </div>
 
     <script>
     const runID = "{{.Run.ID}}";
+    const runState = "{{.Run.State}}";
+    const runHistoryLineCount = {{.Run.HistoryLineCount}};
 
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', () => {
@@ -69,14 +95,38 @@
         });
     });
 
+    const allCharts = {};
+    let syncing = false;
+
+    function syncZoom(source, min, max) {
+        if (syncing) return;
+        syncing = true;
+        for (const c of Object.values(allCharts)) {
+            const btn = c.canvas.closest('.chart-container').querySelector('.zoom-reset-btn');
+            btn.style.display = 'inline-block';
+            if (c === source) continue;
+            c.zoomScale('x', {min, max}, 'none');
+        }
+        syncing = false;
+    }
+
+    function resetAllZoom() {
+        for (const c of Object.values(allCharts)) {
+            c.resetZoom();
+            c.canvas.closest('.chart-container').querySelector('.zoom-reset-btn').style.display = 'none';
+        }
+    }
+
     function createChart(grid, key, points) {
         const div = document.createElement('div');
         div.className = 'chart-container';
         div.id = 'cc-' + key.replace(/[^a-zA-Z0-9]/g, '_');
-        div.innerHTML = `<div class="chart-title">${key}</div><canvas></canvas>`;
+        div.innerHTML = `<div class="chart-header"><div class="chart-title">${key}</div><button class="zoom-reset-btn" style="display:none;" title="Reset zoom">Reset</button></div><canvas></canvas>`;
         grid.appendChild(div);
 
-        return new Chart(div.querySelector('canvas'), {
+        const resetBtn = div.querySelector('.zoom-reset-btn');
+
+        const chart = new Chart(div.querySelector('canvas'), {
             type: 'line',
             data: {
                 labels: points.map(p => p.step),
@@ -93,7 +143,24 @@
             },
             options: {
                 responsive: true,
-                plugins: { legend: { display: false } },
+                plugins: {
+                    legend: { display: false },
+                    zoom: {
+                        zoom: {
+                            drag: {
+                                enabled: true,
+                                backgroundColor: 'rgba(88,166,255,0.15)',
+                                borderColor: '#58a6ff',
+                                borderWidth: 1,
+                            },
+                            mode: 'x',
+                            onZoomComplete: ({chart: zoomedChart}) => {
+                                const {min, max} = zoomedChart.scales.x;
+                                syncZoom(zoomedChart, min, max);
+                            },
+                        },
+                    },
+                },
                 scales: {
                     x: { title: { display: true, text: 'step', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
                     y: { title: { display: true, text: key, color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
@@ -101,17 +168,56 @@
                 animation: false,
             }
         });
+
+        resetBtn.addEventListener('click', () => {
+            resetAllZoom();
+        });
+
+        return chart;
+    }
+
+    const CACHE_PREFIX = 'worb_history_';
+    const MAX_CACHE_ENTRIES = 20;
+
+    function getCachedHistory(id) {
+        try {
+            const raw = localStorage.getItem(CACHE_PREFIX + id);
+            if (!raw) return null;
+            return JSON.parse(raw);
+        } catch { return null; }
+    }
+
+    function setCachedHistory(id, lineCount, ndjsonText) {
+        try {
+            evictOldCacheEntries();
+            localStorage.setItem(CACHE_PREFIX + id, JSON.stringify({
+                lineCount: lineCount,
+                ts: Date.now(),
+                data: ndjsonText,
+            }));
+        } catch {}
+    }
+
+    function evictOldCacheEntries() {
+        const entries = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key.startsWith(CACHE_PREFIX)) {
+                try {
+                    const val = JSON.parse(localStorage.getItem(key));
+                    entries.push({ key, ts: val.ts || 0 });
+                } catch { entries.push({ key, ts: 0 }); }
+            }
+        }
+        entries.sort((a, b) => a.ts - b.ts);
+        while (entries.length >= MAX_CACHE_ENTRIES) {
+            localStorage.removeItem(entries.shift().key);
+        }
     }
 
     async function loadCharts() {
-        const resp = await fetch(`/api/runs/${runID}/history`);
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
         const grid = document.getElementById('chart-grid');
-
         const metrics = {};
-        const charts = {};
-        let buffer = '';
         let renderPending = false;
 
         function dedupeSorted(points) {
@@ -128,21 +234,59 @@
                 renderPending = false;
                 for (const key of Object.keys(metrics)) {
                     const points = dedupeSorted(metrics[key]);
-                    if (charts[key]) {
-                        charts[key].data.labels = points.map(p => p.step);
-                        charts[key].data.datasets[0].data = points.map(p => p.value);
-                        charts[key].update('none');
+                    if (allCharts[key]) {
+                        allCharts[key].data.labels = points.map(p => p.step);
+                        allCharts[key].data.datasets[0].data = points.map(p => p.value);
+                        allCharts[key].update('none');
                     } else {
-                        charts[key] = createChart(grid, key, points);
+                        allCharts[key] = createChart(grid, key, points);
                     }
                 }
             });
         }
 
+        function parseNdjson(text) {
+            for (const line of text.split('\n')) {
+                if (!line) continue;
+                const p = JSON.parse(line);
+                if (!metrics[p.k]) metrics[p.k] = [];
+                metrics[p.k].push({ step: p.s, value: p.v });
+            }
+        }
+
+        const cached = getCachedHistory(runID);
+        const cacheValid = cached && cached.lineCount === runHistoryLineCount && runState !== 'running';
+
+        if (cacheValid) {
+            parseNdjson(cached.data);
+            scheduleRender();
+            if (Object.keys(metrics).length === 0) {
+                document.getElementById('no-charts').style.display = 'block';
+            }
+            return;
+        }
+
+        if (cached && runState === 'running') {
+            parseNdjson(cached.data);
+            scheduleRender();
+        }
+
+        const resp = await fetch(`/api/runs/${runID}/history`);
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let fullText = '';
+
+        if (cached && runState === 'running') {
+            for (const k of Object.keys(metrics)) metrics[k] = [];
+        }
+
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            buffer += decoder.decode(value, { stream: true });
+            const chunk = decoder.decode(value, { stream: true });
+            fullText += chunk;
+            buffer += chunk;
             const lines = buffer.split('\n');
             buffer = lines.pop();
             for (const line of lines) {
@@ -154,11 +298,14 @@
             scheduleRender();
         }
         if (buffer.trim()) {
+            fullText += '\n';
             const p = JSON.parse(buffer);
             if (!metrics[p.k]) metrics[p.k] = [];
             metrics[p.k].push({ step: p.s, value: p.v });
         }
         scheduleRender();
+
+        setCachedHistory(runID, runHistoryLineCount, fullText);
 
         if (Object.keys(metrics).length === 0) {
             document.getElementById('no-charts').style.display = 'block';
@@ -208,6 +355,76 @@
         }
         container.textContent = logs.join('\n');
     }
+
+    async function runQuery() {
+        const sql = document.getElementById('sql-input').value.trim();
+        if (!sql) return;
+
+        const status = document.getElementById('query-status');
+        const results = document.getElementById('query-results');
+        const btn = document.getElementById('run-query-btn');
+
+        btn.disabled = true;
+        status.textContent = 'Running...';
+        status.className = 'query-status';
+        results.innerHTML = '';
+
+        const start = performance.now();
+
+        try {
+            const resp = await fetch('/api/query', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sql }),
+            });
+            const data = await resp.json();
+            const elapsed = ((performance.now() - start) / 1000).toFixed(2);
+
+            if (data.error) {
+                status.textContent = 'Error';
+                status.className = 'query-status error';
+                results.innerHTML = `<pre class="query-error">${data.error}</pre>`;
+                return;
+            }
+
+            status.textContent = `${data.rows.length} rows in ${elapsed}s`;
+            status.className = 'query-status success';
+
+            if (data.columns.length === 0) {
+                results.innerHTML = '<div class="empty-state">Query returned no columns.</div>';
+                return;
+            }
+
+            let html = '<div class="query-table-wrap"><table class="query-table"><thead><tr>';
+            for (const col of data.columns) {
+                html += `<th>${col}</th>`;
+            }
+            html += '</tr></thead><tbody>';
+            for (const row of data.rows) {
+                html += '<tr>';
+                for (const val of row) {
+                    const display = val === null ? '<span class="null-val">NULL</span>' : String(val);
+                    html += `<td>${display}</td>`;
+                }
+                html += '</tr>';
+            }
+            html += '</tbody></table></div>';
+            results.innerHTML = html;
+        } catch (e) {
+            status.textContent = 'Error';
+            status.className = 'query-status error';
+            results.innerHTML = `<pre class="query-error">${e.message}</pre>`;
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    document.getElementById('sql-input').addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            runQuery();
+        }
+    });
 
     loadCharts();
     loadConfig();

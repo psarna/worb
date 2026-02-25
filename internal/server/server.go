@@ -94,6 +94,7 @@ func (s *Server) setupRoutes() {
 		r.Get("/runs/{runID}", s.apiGetRun)
 		r.Get("/runs/{runID}/history", s.apiGetHistory)
 		r.Get("/runs/{runID}/logs", s.apiGetLogs)
+		r.Post("/query", s.apiQuery)
 	})
 
 	r.Handle("/static/*", http.FileServer(http.FS(ui.Static)))
@@ -184,6 +185,31 @@ func (s *Server) apiGetHistory(w http.ResponseWriter, r *http.Request) {
 	if canFlush {
 		flusher.Flush()
 	}
+}
+
+func (s *Server) apiQuery(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		SQL string `json:"sql"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
+	}
+	if req.SQL == "" {
+		http.Error(w, "sql is required", http.StatusBadRequest)
+		return
+	}
+
+	result, err := s.store.ExecuteQuery(req.SQL)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(result)
 }
 
 func (s *Server) apiGetLogs(w http.ResponseWriter, r *http.Request) {
