@@ -48,8 +48,8 @@ All data lives in a single DuckDB file (`~/.worb/worb.duckdb`). To back it up, j
 
 ## Demo
 
-![](img/1.png)
-![](img/2.png)
-![](img/3.png)
-![](img/4.png)
+![](img/p1.webm)
+![](img/p2.png)
+![](img/p3.png)
+![](img/p4.png)
 
