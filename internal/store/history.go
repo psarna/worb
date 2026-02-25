@@ -73,6 +73,72 @@ func (db *DB) GetHistory(runID string) ([]HistoryRow, error) {
 	return result, nil
 }
 
+type MetricPoint struct {
+	Step  float64 `json:"step"`
+	Value float64 `json:"value"`
+}
+
+func (db *DB) GetHistoryScalars(runID string) (map[string][]MetricPoint, error) {
+	rows, err := db.Query("SELECT step, CAST(data AS VARCHAR) FROM history WHERE run_id = ? ORDER BY timestamp, step", runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	metrics := make(map[string][]MetricPoint)
+	lastByKey := make(map[string]map[float64]int)
+
+	for rows.Next() {
+		var step int
+		var data string
+		if err := rows.Scan(&step, &data); err != nil {
+			return nil, err
+		}
+
+		var obj map[string]json.RawMessage
+		if err := json.Unmarshal([]byte(data), &obj); err != nil {
+			continue
+		}
+
+		var xVal float64
+		if raw, ok := obj["step"]; ok {
+			var v float64
+			if json.Unmarshal(raw, &v) == nil {
+				xVal = v
+			} else {
+				xVal = float64(step)
+			}
+		} else {
+			xVal = float64(step)
+		}
+
+		for key, raw := range obj {
+			if key == "step" || key == "_step" || key == "_runtime" || key == "_timestamp" || len(key) > 0 && key[0] == '_' {
+				continue
+			}
+			var v float64
+			if json.Unmarshal(raw, &v) != nil {
+				continue
+			}
+
+			if idx, ok := lastByKey[key]; ok {
+				if prev, exists := idx[xVal]; exists {
+					metrics[key][prev] = MetricPoint{Step: xVal, Value: v}
+					continue
+				}
+			}
+
+			if lastByKey[key] == nil {
+				lastByKey[key] = make(map[float64]int)
+			}
+			lastByKey[key][xVal] = len(metrics[key])
+			metrics[key] = append(metrics[key], MetricPoint{Step: xVal, Value: v})
+		}
+	}
+
+	return metrics, nil
+}
+
 func (db *DB) UpdateRunSummary(runID string, summary json.RawMessage) error {
 	_, err := db.Exec("UPDATE runs SET summary = ?, updated_at = current_timestamp WHERE id = ?", string(summary), runID)
 	return err

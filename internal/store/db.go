@@ -19,10 +19,13 @@ func New(dataDir string) (*DB, error) {
 	}
 
 	dbPath := filepath.Join(dataDir, "worb.duckdb")
-	db, err := sql.Open("duckdb", dbPath)
+	db, err := sql.Open("duckdb", dbPath+"?threads=4")
 	if err != nil {
 		return nil, fmt.Errorf("open duckdb: %w", err)
 	}
+
+	db.SetMaxOpenConns(4)
+	db.SetMaxIdleConns(4)
 
 	store := &DB{db}
 	if err := store.migrate(); err != nil {
@@ -102,6 +105,10 @@ func (db *DB) migrate() error {
 			size INTEGER DEFAULT 0,
 			created_at TIMESTAMP DEFAULT current_timestamp
 		)`,
+		`CREATE INDEX IF NOT EXISTS idx_history_run_id ON history(run_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_system_events_run_id ON system_events(run_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_console_logs_run_id ON console_logs(run_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_runs_project_id ON runs(project_id)`,
 	}
 
 	for _, m := range migrations {

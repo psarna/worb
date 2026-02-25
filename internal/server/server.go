@@ -160,13 +160,13 @@ func (s *Server) apiGetRun(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) apiGetHistory(w http.ResponseWriter, r *http.Request) {
 	runID := chi.URLParam(r, "runID")
-	history, err := s.store.GetHistory(runID)
+	metrics, err := s.store.GetHistoryScalars(runID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(history)
+	json.NewEncoder(w).Encode(metrics)
 }
 
 func (s *Server) apiGetLogs(w http.ResponseWriter, r *http.Request) {
