@@ -182,6 +182,11 @@ func (db *DB) UpsertRun(p UpsertRunParams) (*Run, error) {
 	return db.GetRun(p.ID)
 }
 
+func (db *DB) FinishRun(id string) error {
+	_, err := db.Exec("UPDATE runs SET state = 'finished', updated_at = current_timestamp WHERE id = ?", id)
+	return err
+}
+
 func (db *DB) GetRun(id string) (*Run, error) {
 	r := &Run{}
 	var config, summary, tags sql.NullString

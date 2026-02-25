@@ -17,8 +17,9 @@ type Handler struct {
 }
 
 type fileStreamRequest struct {
-	Files  map[string]fileStreamFile `json:"files"`
-	Offset map[string]int            `json:"offset"`
+	Files    map[string]fileStreamFile `json:"files"`
+	Offset   map[string]int            `json:"offset"`
+	Complete bool                       `json:"complete"`
 }
 
 type fileStreamFile struct {
@@ -53,6 +54,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err := json.Unmarshal(body, &req); err != nil {
 		http.Error(w, fmt.Sprintf("parse body: %v", err), http.StatusBadRequest)
 		return
+	}
+
+	if req.Complete {
+		if err := h.Store.FinishRun(run.ID); err != nil {
+			log.Printf("finish run: %v", err)
+		}
 	}
 
 	for filename, file := range req.Files {
