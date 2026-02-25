@@ -60,15 +60,12 @@ func (s *Server) setupRoutes() {
 	r.Use(auth.Middleware)
 	r.Use(corsMiddleware)
 
-	baseURL := fmt.Sprintf("http://%s:%d", s.config.Host, s.config.Port)
-
 	gqlResolver := &graphql.Resolver{
-		Store:   s.store,
-		BaseURL: baseURL,
+		Store: s.store,
 	}
 	gqlSrv := handler.NewDefaultServer(graphql.NewExecutableSchema(graphql.Config{Resolvers: gqlResolver}))
 
-	r.Handle("/graphql", gqlSrv)
+	r.Handle("/graphql", graphql.BaseURLMiddleware(gqlSrv))
 	r.Handle("/playground", playground.Handler("worb", "/graphql"))
 
 	fsHandler := &filestream.Handler{Store: s.store}

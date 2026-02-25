@@ -216,7 +216,7 @@ func (r *mutationResolver) CommitArtifact(ctx context.Context, input CommitArtif
 func (r *mutationResolver) CreateArtifactManifest(ctx context.Context, input CreateArtifactManifestInput) (*CreateArtifactManifestPayload, error) {
 	manifestID := uuid.New().String()
 	fileID := uuid.New().String()
-	uploadURL := fmt.Sprintf("%s/files/upload/%s", r.BaseURL, fileID)
+	uploadURL := fmt.Sprintf("%s/files/upload/%s", GetBaseURL(ctx), fileID)
 
 	return &CreateArtifactManifestPayload{
 		ArtifactManifest: &ArtifactManifest{
@@ -234,7 +234,7 @@ func (r *mutationResolver) CreateArtifactFiles(ctx context.Context, input Create
 	var edges []*FileEdge
 	for _, f := range input.Files {
 		fileID := uuid.New().String()
-		uploadURL := fmt.Sprintf("%s/files/upload/%s", r.BaseURL, fileID)
+		uploadURL := fmt.Sprintf("%s/files/upload/%s", GetBaseURL(ctx), fileID)
 		edges = append(edges, &FileEdge{
 			Node: &FileUploadInfo{
 				ID:            fileID,
@@ -265,7 +265,7 @@ func (r *mutationResolver) CreateRunFiles(ctx context.Context, input CreateRunFi
 	var files []*FileUploadInfo
 	for _, fname := range input.Files {
 		fileID := uuid.New().String()
-		uploadURL := fmt.Sprintf("%s/files/upload/%s", r.BaseURL, fileID)
+		uploadURL := fmt.Sprintf("%s/files/upload/%s", GetBaseURL(ctx), fileID)
 		files = append(files, &FileUploadInfo{
 			ID:            fileID,
 			Name:          fname,

@@ -5,6 +5,5 @@ import (
 )
 
 type Resolver struct {
-	Store   *store.DB
-	BaseURL string
+	Store *store.DB
 }
