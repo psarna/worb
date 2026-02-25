@@ -4,6 +4,8 @@
 
 # worb
 
+https://worb.cloud
+
 Local, single-binary server compatible with the standard `wandb` Python client. Also, a bad pun.
 
 ## Usage
