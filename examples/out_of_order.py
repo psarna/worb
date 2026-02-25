@@ -4,7 +4,7 @@ import wandb
 os.environ.setdefault("WANDB_BASE_URL", "http://localhost:8080")
 os.environ.setdefault("WANDB_API_KEY", "dev-" + 40 * "f")
 
-run = wandb.init(project="test")
+run = wandb.init(project="test", name="out-of-order-demo")
 run_id = run.id
 run.define_metric("*", step_metric="step", step_sync=False)
 run.log({"eval_metric": 0.1, "step": 1})

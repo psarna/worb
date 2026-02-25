@@ -6,7 +6,7 @@ import wandb
 os.environ.setdefault("WANDB_BASE_URL", "http://localhost:8080")
 os.environ.setdefault("WANDB_API_KEY", "dev-" + 40 * "f")
 
-run = wandb.init(project="complex-run", config={
+run = wandb.init(project="complex-run", name="transformer-training", config={
     "learning_rate": 3e-4,
     "batch_size": 64,
     "architecture": "transformer",
