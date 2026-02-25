@@ -1,8 +1,10 @@
 package store
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 type HistoryRow struct {
@@ -12,13 +14,74 @@ type HistoryRow struct {
 	Timestamp string
 }
 
+func extractScalars(step int, data json.RawMessage) (xVal float64, scalars map[string]float64) {
+	var obj map[string]json.RawMessage
+	if json.Unmarshal(data, &obj) != nil {
+		return float64(step), nil
+	}
+
+	xVal = float64(step)
+	if raw, ok := obj["step"]; ok {
+		var v float64
+		if json.Unmarshal(raw, &v) == nil {
+			xVal = v
+		}
+	}
+
+	scalars = make(map[string]float64)
+	for key, raw := range obj {
+		if key == "step" || len(key) > 0 && key[0] == '_' {
+			continue
+		}
+		var v float64
+		if json.Unmarshal(raw, &v) == nil {
+			scalars[key] = v
+		}
+	}
+	return xVal, scalars
+}
+
+func insertScalars(tx *sql.Tx, runID string, xVal float64, scalars map[string]float64) error {
+	if len(scalars) == 0 {
+		return nil
+	}
+	var b strings.Builder
+	b.WriteString("INSERT INTO history_scalars (run_id, step, key, value) VALUES ")
+	args := make([]any, 0, len(scalars)*4)
+	first := true
+	for key, val := range scalars {
+		if !first {
+			b.WriteByte(',')
+		}
+		b.WriteString("(?,?,?,?)")
+		args = append(args, runID, xVal, key, val)
+		first = false
+	}
+	_, err := tx.Exec(b.String(), args...)
+	return err
+}
+
 func (db *DB) InsertHistory(runID string, step int, data json.RawMessage) error {
-	_, err := db.Exec("INSERT INTO history (run_id, step, data) VALUES (?, ?, ?)", runID, step, string(data))
+	tx, err := db.Begin()
 	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("INSERT INTO history (run_id, step, data) VALUES (?, ?, ?)", runID, step, string(data)); err != nil {
 		return fmt.Errorf("insert history: %w", err)
 	}
-	_, err = db.Exec("UPDATE runs SET history_line_count = history_line_count + 1, updated_at = current_timestamp WHERE id = ?", runID)
-	return err
+
+	xVal, scalars := extractScalars(step, data)
+	if err := insertScalars(tx, runID, xVal, scalars); err != nil {
+		return fmt.Errorf("insert scalars: %w", err)
+	}
+
+	if _, err := tx.Exec("UPDATE runs SET history_line_count = history_line_count + 1, updated_at = current_timestamp WHERE id = ?", runID); err != nil {
+		return fmt.Errorf("update line count: %w", err)
+	}
+
+	return tx.Commit()
 }
 
 func (db *DB) InsertHistoryBatch(runID string, rows []struct {
@@ -43,6 +106,10 @@ func (db *DB) InsertHistoryBatch(runID string, rows []struct {
 	for _, r := range rows {
 		if _, err := stmt.Exec(runID, r.Step, string(r.Data)); err != nil {
 			return fmt.Errorf("insert history step %d: %w", r.Step, err)
+		}
+		xVal, scalars := extractScalars(r.Step, r.Data)
+		if err := insertScalars(tx, runID, xVal, scalars); err != nil {
+			return fmt.Errorf("insert scalars step %d: %w", r.Step, err)
 		}
 	}
 
@@ -79,18 +146,7 @@ type MetricPoint struct {
 }
 
 func (db *DB) GetHistoryScalars(runID string) (map[string][]MetricPoint, error) {
-	rows, err := db.Query(`
-		SELECT
-			k.key,
-			COALESCE(TRY_CAST(h.data->>'$.step' AS DOUBLE), CAST(h.step AS DOUBLE)) AS x,
-			CAST(h.data->>('$."' || k.key || '"') AS DOUBLE) AS value
-		FROM history h, LATERAL UNNEST(json_keys(h.data)) AS k(key)
-		WHERE h.run_id = ?
-			AND k.key NOT LIKE '\_%' ESCAPE '\'
-			AND k.key != 'step'
-			AND json_type(h.data, '$."' || k.key || '"') IN ('BIGINT','DOUBLE','UBIGINT','INTEGER','FLOAT','SMALLINT','TINYINT','HUGEINT')
-		ORDER BY k.key, h.step
-	`, runID)
+	rows, err := db.Query("SELECT key, step, value FROM history_scalars WHERE run_id = ? ORDER BY key, step", runID)
 	if err != nil {
 		return nil, err
 	}
