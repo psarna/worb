@@ -79,60 +79,41 @@ type MetricPoint struct {
 }
 
 func (db *DB) GetHistoryScalars(runID string) (map[string][]MetricPoint, error) {
-	rows, err := db.Query("SELECT step, CAST(data AS VARCHAR) FROM history WHERE run_id = ? ORDER BY timestamp, step", runID)
+	rows, err := db.Query(`
+		SELECT
+			k.key,
+			COALESCE(TRY_CAST(h.data->>'$.step' AS DOUBLE), CAST(h.step AS DOUBLE)) AS x,
+			CAST(h.data->>('$."' || k.key || '"') AS DOUBLE) AS value
+		FROM history h, LATERAL UNNEST(json_keys(h.data)) AS k(key)
+		WHERE h.run_id = ?
+			AND k.key NOT LIKE '\_%' ESCAPE '\'
+			AND k.key != 'step'
+			AND json_type(h.data, '$."' || k.key || '"') IN ('BIGINT','DOUBLE','UBIGINT','INTEGER','FLOAT','SMALLINT','TINYINT','HUGEINT')
+		ORDER BY k.key, h.step
+	`, runID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
 	metrics := make(map[string][]MetricPoint)
-	lastByKey := make(map[string]map[float64]int)
+	seen := make(map[string]map[float64]int)
 
 	for rows.Next() {
-		var step int
-		var data string
-		if err := rows.Scan(&step, &data); err != nil {
+		var key string
+		var x, value float64
+		if err := rows.Scan(&key, &x, &value); err != nil {
 			return nil, err
 		}
 
-		var obj map[string]json.RawMessage
-		if err := json.Unmarshal([]byte(data), &obj); err != nil {
-			continue
+		if seen[key] == nil {
+			seen[key] = make(map[float64]int)
 		}
-
-		var xVal float64
-		if raw, ok := obj["step"]; ok {
-			var v float64
-			if json.Unmarshal(raw, &v) == nil {
-				xVal = v
-			} else {
-				xVal = float64(step)
-			}
+		if idx, exists := seen[key][x]; exists {
+			metrics[key][idx] = MetricPoint{Step: x, Value: value}
 		} else {
-			xVal = float64(step)
-		}
-
-		for key, raw := range obj {
-			if key == "step" || key == "_step" || key == "_runtime" || key == "_timestamp" || len(key) > 0 && key[0] == '_' {
-				continue
-			}
-			var v float64
-			if json.Unmarshal(raw, &v) != nil {
-				continue
-			}
-
-			if idx, ok := lastByKey[key]; ok {
-				if prev, exists := idx[xVal]; exists {
-					metrics[key][prev] = MetricPoint{Step: xVal, Value: v}
-					continue
-				}
-			}
-
-			if lastByKey[key] == nil {
-				lastByKey[key] = make(map[float64]int)
-			}
-			lastByKey[key][xVal] = len(metrics[key])
-			metrics[key] = append(metrics[key], MetricPoint{Step: xVal, Value: v})
+			seen[key][x] = len(metrics[key])
+			metrics[key] = append(metrics[key], MetricPoint{Step: x, Value: value})
 		}
 	}
 
