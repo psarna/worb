@@ -69,48 +69,93 @@
         });
     });
 
+    function createChart(grid, key, points) {
+        const div = document.createElement('div');
+        div.className = 'chart-container';
+        div.id = 'cc-' + key.replace(/[^a-zA-Z0-9]/g, '_');
+        div.innerHTML = `<div class="chart-title">${key}</div><canvas></canvas>`;
+        grid.appendChild(div);
+
+        return new Chart(div.querySelector('canvas'), {
+            type: 'line',
+            data: {
+                labels: points.map(p => p.step),
+                datasets: [{
+                    label: key,
+                    data: points.map(p => p.value),
+                    borderColor: '#58a6ff',
+                    backgroundColor: 'rgba(88,166,255,0.1)',
+                    borderWidth: 1.5,
+                    pointRadius: 0,
+                    tension: 0.1,
+                    fill: true,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { title: { display: true, text: 'step', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                    y: { title: { display: true, text: key, color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                },
+                animation: false,
+            }
+        });
+    }
+
     async function loadCharts() {
         const resp = await fetch(`/api/runs/${runID}/history`);
-        const metrics = await resp.json();
-        if (!metrics || Object.keys(metrics).length === 0) {
-            document.getElementById('no-charts').style.display = 'block';
-            return;
-        }
-
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
         const grid = document.getElementById('chart-grid');
-        Object.keys(metrics).sort().forEach(key => {
-            const div = document.createElement('div');
-            div.className = 'chart-container';
-            div.innerHTML = `<div class="chart-title">${key}</div><canvas id="chart-${key.replace(/[^a-zA-Z0-9]/g, '_')}"></canvas>`;
-            grid.appendChild(div);
 
-            const points = metrics[key];
-            new Chart(div.querySelector('canvas'), {
-                type: 'line',
-                data: {
-                    labels: points.map(p => p.step),
-                    datasets: [{
-                        label: key,
-                        data: points.map(p => p.value),
-                        borderColor: '#58a6ff',
-                        backgroundColor: 'rgba(88,166,255,0.1)',
-                        borderWidth: 1.5,
-                        pointRadius: 0,
-                        tension: 0.1,
-                        fill: true,
-                    }]
-                },
-                options: {
-                    responsive: true,
-                    plugins: { legend: { display: false } },
-                    scales: {
-                        x: { title: { display: true, text: 'step', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
-                        y: { title: { display: true, text: key, color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
-                    },
-                    animation: false,
+        const metrics = {};
+        const charts = {};
+        let buffer = '';
+        let renderPending = false;
+
+        function scheduleRender() {
+            if (renderPending) return;
+            renderPending = true;
+            requestAnimationFrame(() => {
+                renderPending = false;
+                for (const key of Object.keys(metrics)) {
+                    const points = metrics[key];
+                    if (charts[key]) {
+                        charts[key].data.labels = points.map(p => p.step);
+                        charts[key].data.datasets[0].data = points.map(p => p.value);
+                        charts[key].update('none');
+                    } else {
+                        charts[key] = createChart(grid, key, points);
+                    }
                 }
             });
-        });
+        }
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line) continue;
+                const p = JSON.parse(line);
+                if (!metrics[p.k]) metrics[p.k] = [];
+                metrics[p.k].push({ step: p.s, value: p.v });
+            }
+            scheduleRender();
+        }
+        if (buffer.trim()) {
+            const p = JSON.parse(buffer);
+            if (!metrics[p.k]) metrics[p.k] = [];
+            metrics[p.k].push({ step: p.s, value: p.v });
+        }
+        scheduleRender();
+
+        if (Object.keys(metrics).length === 0) {
+            document.getElementById('no-charts').style.display = 'block';
+        }
     }
 
     function renderTable(tableId, obj) {

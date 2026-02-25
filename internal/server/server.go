@@ -157,13 +157,33 @@ func (s *Server) apiGetRun(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) apiGetHistory(w http.ResponseWriter, r *http.Request) {
 	runID := chi.URLParam(r, "runID")
-	metrics, err := s.store.GetHistoryScalars(runID)
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+
+	flusher, canFlush := w.(http.Flusher)
+	enc := json.NewEncoder(w)
+	n := 0
+
+	err := s.store.StreamHistoryScalars(runID, func(p store.ScalarPoint) error {
+		if err := enc.Encode(p); err != nil {
+			return err
+		}
+		n++
+		if canFlush && n%50 == 0 {
+			flusher.Flush()
+		}
+		return nil
+	})
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if n == 0 {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(metrics)
+	if canFlush {
+		flusher.Flush()
+	}
 }
 
 func (s *Server) apiGetLogs(w http.ResponseWriter, r *http.Request) {

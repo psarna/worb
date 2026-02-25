@@ -19,13 +19,10 @@ func New(dataDir string) (*DB, error) {
 	}
 
 	dbPath := filepath.Join(dataDir, "worb.duckdb")
-	db, err := sql.Open("duckdb", dbPath+"?threads=4")
+	db, err := sql.Open("duckdb", dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open duckdb: %w", err)
 	}
-
-	db.SetMaxOpenConns(4)
-	db.SetMaxIdleConns(4)
 
 	store := &DB{db}
 	if err := store.migrate(); err != nil {
@@ -105,14 +102,7 @@ func (db *DB) migrate() error {
 			size INTEGER DEFAULT 0,
 			created_at TIMESTAMP DEFAULT current_timestamp
 		)`,
-		`CREATE TABLE IF NOT EXISTS history_scalars (
-			run_id TEXT NOT NULL REFERENCES runs(id),
-			step DOUBLE NOT NULL,
-			key TEXT NOT NULL,
-			value DOUBLE NOT NULL
-		)`,
 		`CREATE INDEX IF NOT EXISTS idx_history_run_id ON history(run_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_history_scalars_run_id ON history_scalars(run_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_system_events_run_id ON system_events(run_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_console_logs_run_id ON console_logs(run_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_runs_project_id ON runs(project_id)`,
@@ -124,24 +114,7 @@ func (db *DB) migrate() error {
 		}
 	}
 
-	var count int
-	if err := db.QueryRow("SELECT COUNT(*) FROM history_scalars").Scan(&count); err == nil && count == 0 {
-		var historyCount int
-		if err := db.QueryRow("SELECT COUNT(*) FROM history").Scan(&historyCount); err == nil && historyCount > 0 {
-			db.Exec(`
-				INSERT INTO history_scalars (run_id, step, key, value)
-				SELECT
-					h.run_id,
-					COALESCE(TRY_CAST(h.data->>'$.step' AS DOUBLE), CAST(h.step AS DOUBLE)),
-					k.key,
-					CAST(h.data->>('$."' || k.key || '"') AS DOUBLE)
-				FROM history h, LATERAL UNNEST(json_keys(h.data)) AS k(key)
-				WHERE k.key NOT LIKE '\_%' ESCAPE '\'
-					AND k.key != 'step'
-					AND json_type(h.data, '$."' || k.key || '"') IN ('BIGINT','DOUBLE','UBIGINT','INTEGER','FLOAT','SMALLINT','TINYINT','HUGEINT')
-			`)
-		}
-	}
+	db.Exec("DROP TABLE IF EXISTS history_scalars")
 
 	return nil
 }
