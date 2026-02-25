@@ -160,6 +160,55 @@
             height: 20px;
             fill: var(--text);
         }
+
+        .gallery {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            max-width: 560px;
+            width: 100%;
+            margin-bottom: 48px;
+        }
+
+        .gallery a {
+            display: block;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            overflow: hidden;
+            transition: border-color 0.15s;
+        }
+
+        .gallery a:hover {
+            border-color: var(--accent);
+        }
+
+        .gallery img, .gallery video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .lightbox {
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+        }
+
+        .lightbox.active {
+            display: flex;
+        }
+
+        .lightbox img, .lightbox video {
+            max-width: 90vw;
+            max-height: 90vh;
+            border-radius: 8px;
+        }
     </style>
 </head>
 <body>
@@ -196,6 +245,15 @@
         </li>
     </ul>
 
+    <div class="gallery">
+        <a href="#" onclick="openLightbox('img/p2.webm','video'); return false;"><video src="img/p2.webm" muted loop autoplay playsinline></video></a>
+        <a href="#" onclick="openLightbox('img/p3.png','img'); return false;"><img src="img/p3.png" alt="Preview"></a>
+        <a href="#" onclick="openLightbox('img/p1.webm','video'); return false;"><video src="img/p1.webm" muted loop autoplay playsinline></video></a>
+        <a href="#" onclick="openLightbox('img/p4.png','img'); return false;"><img src="img/p4.png" alt="Preview"></a>
+    </div>
+
+    <div class="lightbox" id="lightbox" onclick="closeLightbox()"></div>
+
     <blockquote>
         Let's be honest, metrics from your grand AI experiment fit on a consumer grade laptop from the late 90s.
     </blockquote>
@@ -216,5 +274,22 @@ wandb.<span class="fn">finish</span>()</pre></div>
         <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
         GitHub
     </a>
+    <script>
+    function openLightbox(src, type) {
+        var lb = document.getElementById('lightbox');
+        if (type === 'video') {
+            lb.innerHTML = '<video src="' + src + '" controls autoplay loop style="max-width:90vw;max-height:90vh;border-radius:8px"></video>';
+        } else {
+            lb.innerHTML = '<img src="' + src + '" style="max-width:90vw;max-height:90vh;border-radius:8px">';
+        }
+        lb.classList.add('active');
+    }
+    function closeLightbox() {
+        var lb = document.getElementById('lightbox');
+        lb.classList.remove('active');
+        lb.innerHTML = '';
+    }
+    document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeLightbox(); });
+    </script>
 </body>
 </html>
