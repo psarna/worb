@@ -38,6 +38,7 @@ go build -o worb .
 
 | Flag | Default | Description |
 |------|---------|-------------|
+| `--host` | `127.0.0.1` | Host to bind to (use `0.0.0.0` for all interfaces) |
 | `--port` | `8080` | Port to listen on |
 | `--data` | `~/.worb` | Data directory for DuckDB and uploaded files |
 

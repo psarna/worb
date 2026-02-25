@@ -18,6 +18,7 @@ func (s *Server) uiIndex(w http.ResponseWriter, r *http.Request) {
 	projects, _ := s.store.ListProjects("local")
 	templates.ExecuteTemplate(w, "index.html", map[string]any{
 		"Projects": projects,
+		"Host":     s.config.Host,
 		"Port":     s.config.Port,
 	})
 }

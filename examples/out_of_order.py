@@ -1,7 +1,6 @@
 import os
 import wandb
 
-os.environ["WANDB_DIR"] = "worb"
 os.environ["WANDB_BASE_URL"] = "http://localhost:8080"
 os.environ["WANDB_API_KEY"] = "dev-"+40*"f"
 

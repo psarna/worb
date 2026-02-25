@@ -28,7 +28,7 @@
         <div class="empty-state">
             <p>No projects yet. Start a run to see data here.</p>
             <p style="margin-top: 8px; font-size: 13px;">
-                WANDB_BASE_URL=http://localhost:{{.Port}} WANDB_API_KEY=local wandb.init()
+                WANDB_BASE_URL=http://{{.Host}}:{{.Port}} WANDB_API_KEY=local wandb.init()
             </p>
         </div>
         {{end}}

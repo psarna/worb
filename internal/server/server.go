@@ -20,6 +20,7 @@ import (
 )
 
 type Config struct {
+	Host    string
 	Port    int
 	DataDir string
 }
@@ -59,7 +60,7 @@ func (s *Server) setupRoutes() {
 	r.Use(auth.Middleware)
 	r.Use(corsMiddleware)
 
-	baseURL := fmt.Sprintf("http://localhost:%d", s.config.Port)
+	baseURL := fmt.Sprintf("http://%s:%d", s.config.Host, s.config.Port)
 
 	gqlResolver := &graphql.Resolver{
 		Store:   s.store,
@@ -107,8 +108,8 @@ func (s *Server) setupRoutes() {
 }
 
 func (s *Server) Run() error {
-	addr := fmt.Sprintf(":%d", s.config.Port)
-	log.Printf("worb listening on http://localhost:%d", s.config.Port)
+	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
+	log.Printf("worb listening on http://%s", addr)
 	return http.ListenAndServe(addr, s.router)
 }
 
