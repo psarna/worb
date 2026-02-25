@@ -1,0 +1,17 @@
+import os
+import random
+import wandb
+
+os.environ["WANDB_BASE_URL"] = "http://localhost:8080"
+os.environ["WANDB_API_KEY"] = "dev-" + 40 * "f"
+
+run = wandb.init(project="test")
+
+for step in range(20):
+    predictions = [random.gauss(0, 1) for _ in range(100)]
+    run.log({
+        "loss": 1.0 / (step + 1),
+        "predictions": wandb.Histogram(predictions),
+    })
+
+run.finish()
