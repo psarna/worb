@@ -158,6 +158,7 @@ type Project struct {
 	ReadOnly   *bool          `json:"readOnly,omitempty"`
 	RunCount   *int           `json:"runCount,omitempty"`
 	Runs       *RunConnection `json:"runs,omitempty"`
+	Run        *Run           `json:"run,omitempty"`
 	Bucket     *Run           `json:"bucket,omitempty"`
 }
 

@@ -153,6 +153,7 @@ type ComplexityRoot struct {
 		InternalID func(childComplexity int) int
 		Name       func(childComplexity int) int
 		ReadOnly   func(childComplexity int) int
+		Run        func(childComplexity int, name string) int
 		RunCount   func(childComplexity int, filters *string) int
 		Runs       func(childComplexity int, first *int, order *string, filters *string, after *string) int
 	}
@@ -268,6 +269,7 @@ type MutationResolver interface {
 type ProjectResolver interface {
 	RunCount(ctx context.Context, obj *Project, filters *string) (*int, error)
 	Runs(ctx context.Context, obj *Project, first *int, order *string, filters *string, after *string) (*RunConnection, error)
+	Run(ctx context.Context, obj *Project, name string) (*Run, error)
 	Bucket(ctx context.Context, obj *Project, name string, missingOk *bool) (*Run, error)
 }
 type QueryResolver interface {
@@ -636,6 +638,17 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Project.ReadOnly(childComplexity), true
+	case "Project.run":
+		if e.complexity.Project.Run == nil {
+			break
+		}
+
+		args, err := ec.field_Project_run_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Project.Run(childComplexity, args["name"].(string)), true
 	case "Project.runCount":
 		if e.complexity.Project.RunCount == nil {
 			break
@@ -1376,6 +1389,17 @@ func (ec *executionContext) field_Project_runCount_args(ctx context.Context, raw
 		return nil, err
 	}
 	args["filters"] = arg0
+	return args, nil
+}
+
+func (ec *executionContext) field_Project_run_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "name", ec.unmarshalNString2string)
+	if err != nil {
+		return nil, err
+	}
+	args["name"] = arg0
 	return args, nil
 }
 
@@ -3136,6 +3160,109 @@ func (ec *executionContext) fieldContext_Project_runs(ctx context.Context, field
 	return fc, nil
 }
 
+func (ec *executionContext) _Project_run(ctx context.Context, field graphql.CollectedField, obj *Project) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Project_run,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Project().Run(ctx, obj, fc.Args["name"].(string))
+		},
+		nil,
+		ec.marshalORun2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐRun,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Project_run(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Project",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_Run_id(ctx, field)
+			case "name":
+				return ec.fieldContext_Run_name(ctx, field)
+			case "displayName":
+				return ec.fieldContext_Run_displayName(ctx, field)
+			case "project":
+				return ec.fieldContext_Run_project(ctx, field)
+			case "projectId":
+				return ec.fieldContext_Run_projectId(ctx, field)
+			case "config":
+				return ec.fieldContext_Run_config(ctx, field)
+			case "summaryMetrics":
+				return ec.fieldContext_Run_summaryMetrics(ctx, field)
+			case "state":
+				return ec.fieldContext_Run_state(ctx, field)
+			case "host":
+				return ec.fieldContext_Run_host(ctx, field)
+			case "program":
+				return ec.fieldContext_Run_program(ctx, field)
+			case "commit":
+				return ec.fieldContext_Run_commit(ctx, field)
+			case "tags":
+				return ec.fieldContext_Run_tags(ctx, field)
+			case "description":
+				return ec.fieldContext_Run_description(ctx, field)
+			case "notes":
+				return ec.fieldContext_Run_notes(ctx, field)
+			case "group":
+				return ec.fieldContext_Run_group(ctx, field)
+			case "jobType":
+				return ec.fieldContext_Run_jobType(ctx, field)
+			case "sweepName":
+				return ec.fieldContext_Run_sweepName(ctx, field)
+			case "historyLineCount":
+				return ec.fieldContext_Run_historyLineCount(ctx, field)
+			case "eventsLineCount":
+				return ec.fieldContext_Run_eventsLineCount(ctx, field)
+			case "logLineCount":
+				return ec.fieldContext_Run_logLineCount(ctx, field)
+			case "createdAt":
+				return ec.fieldContext_Run_createdAt(ctx, field)
+			case "updatedAt":
+				return ec.fieldContext_Run_updatedAt(ctx, field)
+			case "heartbeatAt":
+				return ec.fieldContext_Run_heartbeatAt(ctx, field)
+			case "historyTail":
+				return ec.fieldContext_Run_historyTail(ctx, field)
+			case "eventsTail":
+				return ec.fieldContext_Run_eventsTail(ctx, field)
+			case "readOnly":
+				return ec.fieldContext_Run_readOnly(ctx, field)
+			case "systemMetrics":
+				return ec.fieldContext_Run_systemMetrics(ctx, field)
+			case "historyKeys":
+				return ec.fieldContext_Run_historyKeys(ctx, field)
+			case "user":
+				return ec.fieldContext_Run_user(ctx, field)
+			case "wandbConfig":
+				return ec.fieldContext_Run_wandbConfig(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type Run", field.Name)
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Project_run_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Project_bucket(ctx context.Context, field graphql.CollectedField, obj *Project) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3329,6 +3456,8 @@ func (ec *executionContext) fieldContext_Query_project(ctx context.Context, fiel
 				return ec.fieldContext_Project_runCount(ctx, field)
 			case "runs":
 				return ec.fieldContext_Project_runs(ctx, field)
+			case "run":
+				return ec.fieldContext_Project_run(ctx, field)
 			case "bucket":
 				return ec.fieldContext_Project_bucket(ctx, field)
 			}
@@ -3388,6 +3517,8 @@ func (ec *executionContext) fieldContext_Query_model(ctx context.Context, field 
 				return ec.fieldContext_Project_runCount(ctx, field)
 			case "runs":
 				return ec.fieldContext_Project_runs(ctx, field)
+			case "run":
+				return ec.fieldContext_Project_run(ctx, field)
 			case "bucket":
 				return ec.fieldContext_Project_bucket(ctx, field)
 			}
@@ -3729,6 +3860,8 @@ func (ec *executionContext) fieldContext_Run_project(_ context.Context, field gr
 				return ec.fieldContext_Project_runCount(ctx, field)
 			case "runs":
 				return ec.fieldContext_Project_runs(ctx, field)
+			case "run":
+				return ec.fieldContext_Project_run(ctx, field)
 			case "bucket":
 				return ec.fieldContext_Project_bucket(ctx, field)
 			}
@@ -8393,6 +8526,39 @@ func (ec *executionContext) _Project(ctx context.Context, sel ast.SelectionSet, 
 					}
 				}()
 				res = ec._Project_runs(ctx, field, obj)
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
+		case "run":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Project_run(ctx, field, obj)
 				return res
 			}
 

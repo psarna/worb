@@ -134,6 +134,7 @@ type Project {
   readOnly: Boolean
   runCount(filters: JSONString): Int
   runs(first: Int, order: String, filters: JSONString, after: String): RunConnection
+  run(name: String!): Run
   bucket(name: String!, missingOk: Boolean): Run
 }
 

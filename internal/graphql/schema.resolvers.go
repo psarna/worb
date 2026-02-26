@@ -336,6 +336,15 @@ func (r *projectResolver) Runs(ctx context.Context, obj *Project, first *int, or
 	}, nil
 }
 
+// Run is the resolver for the run field.
+func (r *projectResolver) Run(ctx context.Context, obj *Project, name string) (*Run, error) {
+	run, err := r.Store.GetRunByName(obj.ID, name)
+	if err != nil {
+		return nil, nil
+	}
+	return storeRunToGQL(run), nil
+}
+
 // Bucket is the resolver for the bucket field.
 func (r *projectResolver) Bucket(ctx context.Context, obj *Project, name string, missingOk *bool) (*Run, error) {
 	run, err := r.Store.GetRunByName(obj.ID, name)
