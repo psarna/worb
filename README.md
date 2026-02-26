@@ -33,6 +33,16 @@ wandb.finish()
 
 Then visit `http://localhost:8080` to see the run with metrics charts.
 
+## Examples
+
+Run the example scripts in the `examples/` directory to see how things work:
+
+```bash
+WANDB_BASE_URL=http://localhost:8080 python examples/complex.py
+WANDB_BASE_URL=http://localhost:8080 python examples/histogram.py
+WANDB_BASE_URL=http://localhost:8080 python examples/out_of_order.py
+```
+
 ## Build
 
 ```bash
