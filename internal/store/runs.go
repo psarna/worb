@@ -285,3 +285,13 @@ func (db *DB) GetProject(id string) (*Project, error) {
 	}
 	return p, nil
 }
+
+func (db *DB) GetProjectByName(entity, name string) (*Project, error) {
+	p := &Project{}
+	err := db.QueryRow("SELECT id, entity, name, created_at FROM projects WHERE entity = ? AND name = ?", entity, name).
+		Scan(&p.ID, &p.Entity, &p.Name, &p.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return p, nil
+}

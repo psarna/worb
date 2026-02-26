@@ -102,6 +102,9 @@ func (s *Server) setupRoutes() {
 	r.Get("/projects/{projectID}", s.uiProject)
 	r.Get("/runs/{runID}", s.uiRun)
 
+	r.Get("/{entity}/{project}", s.wandbProjectRedirect)
+	r.Get("/{entity}/{project}/runs/{runName}", s.wandbRunRedirect)
+
 	s.router = r
 }
 
@@ -210,6 +213,34 @@ func (s *Server) apiQuery(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
+}
+
+func (s *Server) wandbProjectRedirect(w http.ResponseWriter, r *http.Request) {
+	entity := chi.URLParam(r, "entity")
+	projectName := chi.URLParam(r, "project")
+	project, err := s.store.GetProjectByName(entity, projectName)
+	if err != nil {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+	http.Redirect(w, r, "/projects/"+project.ID, http.StatusFound)
+}
+
+func (s *Server) wandbRunRedirect(w http.ResponseWriter, r *http.Request) {
+	entity := chi.URLParam(r, "entity")
+	projectName := chi.URLParam(r, "project")
+	runName := chi.URLParam(r, "runName")
+	project, err := s.store.GetProjectByName(entity, projectName)
+	if err != nil {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+	run, err := s.store.GetRunByName(project.ID, runName)
+	if err != nil {
+		http.Error(w, "run not found", http.StatusNotFound)
+		return
+	}
+	http.Redirect(w, r, "/runs/"+run.ID, http.StatusFound)
 }
 
 func (s *Server) apiGetLogs(w http.ResponseWriter, r *http.Request) {
