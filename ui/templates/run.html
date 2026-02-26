@@ -322,8 +322,10 @@ LIMIT 20</textarea>
         }
 
         const cached = getCachedHistory(runID);
+        let cachedLineCount = 0;
         if (cached) {
             parseNdjson(cached.data);
+            cachedLineCount = cached.data.split('\n').filter(l => l).length;
             scheduleRender();
         }
 
@@ -332,8 +334,8 @@ LIMIT 20</textarea>
         const decoder = new TextDecoder();
         let buffer = '';
         let fullText = '';
-
-        for (const k of Object.keys(metrics)) metrics[k] = [];
+        let freshLineCount = 0;
+        let hasNewData = false;
 
         while (true) {
             const { done, value } = await reader.read();
@@ -345,21 +347,31 @@ LIMIT 20</textarea>
             buffer = lines.pop();
             for (const line of lines) {
                 if (!line) continue;
+                freshLineCount++;
+                if (freshLineCount <= cachedLineCount) continue;
+                hasNewData = true;
                 const p = JSON.parse(line);
                 if (!metrics[p.k]) metrics[p.k] = [];
                 metrics[p.k].push({ step: p.s, value: p.v });
             }
-            scheduleRender();
+            if (hasNewData) scheduleRender();
         }
         if (buffer.trim()) {
             fullText += '\n';
-            const p = JSON.parse(buffer);
-            if (!metrics[p.k]) metrics[p.k] = [];
-            metrics[p.k].push({ step: p.s, value: p.v });
+            freshLineCount++;
+            if (freshLineCount > cachedLineCount) {
+                hasNewData = true;
+                const p = JSON.parse(buffer);
+                if (!metrics[p.k]) metrics[p.k] = [];
+                metrics[p.k].push({ step: p.s, value: p.v });
+            }
         }
-        scheduleRender();
-
-        setCachedHistory(runID, runHistoryLineCount, fullText);
+        if (hasNewData) {
+            scheduleRender();
+            setCachedHistory(runID, runHistoryLineCount, fullText);
+        } else if (!cached) {
+            setCachedHistory(runID, runHistoryLineCount, fullText);
+        }
 
         if (Object.keys(metrics).length === 0) {
             document.getElementById('no-charts').style.display = 'block';
