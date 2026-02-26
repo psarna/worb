@@ -8,8 +8,9 @@ https://worb.cloud
 
 Local, single-binary server compatible with the standard `wandb` Python client. Also, a bad pun.
 
-- **Powered by DuckDB** — single file, simple backups, built-in SQL console
-- **Single executable** — build and run anywhere, just set `WANDB_BASE_URL=http://your-worb-server`
+- **Powered by DuckDB**: single file, simple backups, built-in SQL console
+- **Single executable**: build and run anywhere, just set `WANDB_BASE_URL=http://your-worb-server`
+- **built-in GraphQL console**: for the men of culture
 
 ## Usage
 
