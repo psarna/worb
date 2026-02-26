@@ -175,7 +175,6 @@ type Run {
   name: String!
   displayName: String
   project: Project
-  projectId: String
   config: JSONString
   summaryMetrics: JSONString
   state: String

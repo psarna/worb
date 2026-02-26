@@ -187,7 +187,6 @@ type ComplexityRoot struct {
 		Notes            func(childComplexity int) int
 		Program          func(childComplexity int) int
 		Project          func(childComplexity int) int
-		ProjectID        func(childComplexity int) int
 		ReadOnly         func(childComplexity int) int
 		State            func(childComplexity int) int
 		SummaryMetrics   func(childComplexity int) int
@@ -838,12 +837,6 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Run.Project(childComplexity), true
-	case "Run.projectId":
-		if e.complexity.Run.ProjectID == nil {
-			break
-		}
-
-		return e.complexity.Run.ProjectID(childComplexity), true
 	case "Run.readOnly":
 		if e.complexity.Run.ReadOnly == nil {
 			break
@@ -3193,8 +3186,6 @@ func (ec *executionContext) fieldContext_Project_run(ctx context.Context, field 
 				return ec.fieldContext_Run_displayName(ctx, field)
 			case "project":
 				return ec.fieldContext_Run_project(ctx, field)
-			case "projectId":
-				return ec.fieldContext_Run_projectId(ctx, field)
 			case "config":
 				return ec.fieldContext_Run_config(ctx, field)
 			case "summaryMetrics":
@@ -3296,8 +3287,6 @@ func (ec *executionContext) fieldContext_Project_bucket(ctx context.Context, fie
 				return ec.fieldContext_Run_displayName(ctx, field)
 			case "project":
 				return ec.fieldContext_Run_project(ctx, field)
-			case "projectId":
-				return ec.fieldContext_Run_projectId(ctx, field)
 			case "config":
 				return ec.fieldContext_Run_config(ctx, field)
 			case "summaryMetrics":
@@ -3866,35 +3855,6 @@ func (ec *executionContext) fieldContext_Run_project(_ context.Context, field gr
 				return ec.fieldContext_Project_bucket(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Project", field.Name)
-		},
-	}
-	return fc, nil
-}
-
-func (ec *executionContext) _Run_projectId(ctx context.Context, field graphql.CollectedField, obj *Run) (ret graphql.Marshaler) {
-	return graphql.ResolveField(
-		ctx,
-		ec.OperationContext,
-		field,
-		ec.fieldContext_Run_projectId,
-		func(ctx context.Context) (any, error) {
-			return obj.ProjectID, nil
-		},
-		nil,
-		ec.marshalOString2ᚖstring,
-		true,
-		false,
-	)
-}
-
-func (ec *executionContext) fieldContext_Run_projectId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
-	fc = &graphql.FieldContext{
-		Object:     "Run",
-		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
-		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
-			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -4745,8 +4705,6 @@ func (ec *executionContext) fieldContext_RunEdge_node(_ context.Context, field g
 				return ec.fieldContext_Run_displayName(ctx, field)
 			case "project":
 				return ec.fieldContext_Run_project(ctx, field)
-			case "projectId":
-				return ec.fieldContext_Run_projectId(ctx, field)
 			case "config":
 				return ec.fieldContext_Run_config(ctx, field)
 			case "summaryMetrics":
@@ -5148,8 +5106,6 @@ func (ec *executionContext) fieldContext_UpsertBucketPayload_bucket(_ context.Co
 				return ec.fieldContext_Run_displayName(ctx, field)
 			case "project":
 				return ec.fieldContext_Run_project(ctx, field)
-			case "projectId":
-				return ec.fieldContext_Run_projectId(ctx, field)
 			case "config":
 				return ec.fieldContext_Run_config(ctx, field)
 			case "summaryMetrics":
@@ -8808,8 +8764,6 @@ func (ec *executionContext) _Run(ctx context.Context, sel ast.SelectionSet, obj 
 			out.Values[i] = ec._Run_displayName(ctx, field, obj)
 		case "project":
 			out.Values[i] = ec._Run_project(ctx, field, obj)
-		case "projectId":
-			out.Values[i] = ec._Run_projectId(ctx, field, obj)
 		case "config":
 			out.Values[i] = ec._Run_config(ctx, field, obj)
 		case "summaryMetrics":

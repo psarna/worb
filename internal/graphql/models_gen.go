@@ -170,7 +170,6 @@ type Run struct {
 	Name             string   `json:"name"`
 	DisplayName      *string  `json:"displayName,omitempty"`
 	Project          *Project `json:"project,omitempty"`
-	ProjectID        *string  `json:"projectId,omitempty"`
 	Config           *string  `json:"config,omitempty"`
 	SummaryMetrics   *string  `json:"summaryMetrics,omitempty"`
 	State            *string  `json:"state,omitempty"`

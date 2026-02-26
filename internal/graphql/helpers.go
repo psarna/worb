@@ -70,7 +70,6 @@ func storeRunToGQL(r *store.Run) *Run {
 	readOnly := false
 	gqlRun.ReadOnly = &readOnly
 	gqlRun.User = &RunUser{}
-	gqlRun.ProjectID = &r.ProjectID
 
 	return gqlRun
 }
