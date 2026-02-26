@@ -90,6 +90,28 @@ LIMIT 20</textarea>
         });
     });
 
+    const barLabelPlugin = {
+        id: 'barLabel',
+        afterDatasetsDraw(chart) {
+            const { ctx } = chart;
+            chart.data.datasets.forEach((ds, i) => {
+                const meta = chart.getDatasetMeta(i);
+                meta.data.forEach((bar, idx) => {
+                    const val = ds.data[idx];
+                    if (val == null) return;
+                    const text = Number.isInteger(val) ? String(val) : val.toFixed(4);
+                    ctx.save();
+                    ctx.fillStyle = '#e6edf3';
+                    ctx.font = 'bold 13px sans-serif';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(text, bar.x, bar.y + (bar.height || 0) / 2);
+                    ctx.restore();
+                });
+            });
+        }
+    };
+
     const allCharts = {};
     const everyChart = new Set();
     let syncing = false;
@@ -138,6 +160,7 @@ LIMIT 20</textarea>
         const expandedChart = new Chart(container.querySelector('canvas'), isBar ? {
             type: 'bar',
             data: data,
+            plugins: [barLabelPlugin],
             options: {
                 responsive: true,
                 plugins: {
@@ -228,6 +251,7 @@ LIMIT 20</textarea>
                     barPercentage: 0.4,
                 }]
             },
+            plugins: [barLabelPlugin],
             options: {
                 responsive: true,
                 plugins: {
