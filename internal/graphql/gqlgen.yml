@@ -23,6 +23,8 @@ models:
     fields:
       bucket:
         resolver: true
+      runs:
+        resolver: true
   Run:
     fields:
       wandbConfig:

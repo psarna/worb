@@ -281,6 +281,41 @@ func (r *mutationResolver) CreateRunFiles(ctx context.Context, input CreateRunFi
 	}, nil
 }
 
+// Runs is the resolver for the runs field.
+func (r *projectResolver) Runs(ctx context.Context, obj *Project, first *int, order *string, filters *string) (*RunConnection, error) {
+	var displayName string
+	if filters != nil {
+		var f map[string]interface{}
+		if err := json.Unmarshal([]byte(*filters), &f); err == nil {
+			if dn, ok := f["display_name"].(string); ok {
+				displayName = dn
+			}
+		}
+	}
+
+	runs, err := r.Store.ListRunsFiltered(obj.ID, displayName)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	var edges []*RunEdge
+	for _, run := range runs {
+		edges = append(edges, &RunEdge{
+			Node:   storeRunToGQL(run),
+			Cursor: run.ID,
+		})
+	}
+
+	if first != nil && len(edges) > *first {
+		edges = edges[:*first]
+	}
+
+	return &RunConnection{
+		Edges:    edges,
+		PageInfo: &PageInfo{HasNextPage: false},
+	}, nil
+}
+
 // Bucket is the resolver for the bucket field.
 func (r *projectResolver) Bucket(ctx context.Context, obj *Project, name string, missingOk *bool) (*Run, error) {
 	run, err := r.Store.GetRunByName(obj.ID, name)
@@ -320,20 +355,6 @@ func (r *queryResolver) Project(ctx context.Context, name string, entityName *st
 		return nil, err
 	}
 
-	runs, err := r.Store.ListRuns(proj.ID)
-	if err != nil && err != sql.ErrNoRows {
-		return nil, err
-	}
-
-	var edges []*RunEdge
-	for _, run := range runs {
-		gqlRun := storeRunToGQL(run)
-		edges = append(edges, &RunEdge{
-			Node:   gqlRun,
-			Cursor: run.ID,
-		})
-	}
-
 	return &Project{
 		ID:   proj.ID,
 		Name: proj.Name,
@@ -341,10 +362,6 @@ func (r *queryResolver) Project(ctx context.Context, name string, entityName *st
 			ID:           entity,
 			Name:         entity,
 			Organization: &Organization{ID: entity, Name: entity},
-		},
-		Runs: &RunConnection{
-			Edges:    edges,
-			PageInfo: &PageInfo{HasNextPage: false},
 		},
 	}, nil
 }

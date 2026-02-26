@@ -137,7 +137,7 @@ type ComplexityRoot struct {
 		Entity func(childComplexity int) int
 		ID     func(childComplexity int) int
 		Name   func(childComplexity int) int
-		Runs   func(childComplexity int, first *int, order *string) int
+		Runs   func(childComplexity int, first *int, order *string, filters *string) int
 	}
 
 	Query struct {
@@ -235,6 +235,7 @@ type MutationResolver interface {
 	CreateRunFiles(ctx context.Context, input CreateRunFilesInput) (*CreateRunFilesPayload, error)
 }
 type ProjectResolver interface {
+	Runs(ctx context.Context, obj *Project, first *int, order *string, filters *string) (*RunConnection, error)
 	Bucket(ctx context.Context, obj *Project, name string, missingOk *bool) (*Run, error)
 }
 type QueryResolver interface {
@@ -568,7 +569,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Project.Runs(childComplexity, args["first"].(*int), args["order"].(*string)), true
+		return e.complexity.Project.Runs(childComplexity, args["first"].(*int), args["order"].(*string), args["filters"].(*string)), true
 
 	case "Query.entity":
 		if e.complexity.Query.Entity == nil {
@@ -1225,6 +1226,11 @@ func (ec *executionContext) field_Project_runs_args(ctx context.Context, rawArgs
 		return nil, err
 	}
 	args["order"] = arg1
+	arg2, err := graphql.ProcessArgField(ctx, rawArgs, "filters", ec.unmarshalOJSONString2ᚖstring)
+	if err != nil {
+		return nil, err
+	}
+	args["filters"] = arg2
 	return args, nil
 }
 
@@ -2663,7 +2669,8 @@ func (ec *executionContext) _Project_runs(ctx context.Context, field graphql.Col
 		field,
 		ec.fieldContext_Project_runs,
 		func(ctx context.Context) (any, error) {
-			return obj.Runs, nil
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Project().Runs(ctx, obj, fc.Args["first"].(*int), fc.Args["order"].(*string), fc.Args["filters"].(*string))
 		},
 		nil,
 		ec.marshalORunConnection2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐRunConnection,
@@ -2676,8 +2683,8 @@ func (ec *executionContext) fieldContext_Project_runs(ctx context.Context, field
 	fc = &graphql.FieldContext{
 		Object:     "Project",
 		Field:      field,
-		IsMethod:   false,
-		IsResolver: false,
+		IsMethod:   true,
+		IsResolver: true,
 		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
 			switch field.Name {
 			case "edges":
@@ -7404,7 +7411,38 @@ func (ec *executionContext) _Project(ctx context.Context, sel ast.SelectionSet, 
 				atomic.AddUint32(&out.Invalids, 1)
 			}
 		case "runs":
-			out.Values[i] = ec._Project_runs(ctx, field, obj)
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Project_runs(ctx, field, obj)
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "bucket":
 			field := field
 

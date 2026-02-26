@@ -112,7 +112,7 @@ type Project {
   id: String!
   name: String!
   entity: Entity!
-  runs(first: Int, order: String): RunConnection
+  runs(first: Int, order: String, filters: JSONString): RunConnection
   bucket(name: String!, missingOk: Boolean): Run
 }
 

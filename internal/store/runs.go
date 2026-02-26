@@ -255,6 +255,36 @@ func (db *DB) ListRuns(projectID string) ([]*Run, error) {
 	return runs, nil
 }
 
+func (db *DB) ListRunsFiltered(projectID string, displayName string) ([]*Run, error) {
+	query := `SELECT id FROM runs WHERE project_id = ?`
+	args := []any{projectID}
+	if displayName != "" {
+		query += ` AND display_name = ?`
+		args = append(args, displayName)
+	}
+	query += ` ORDER BY created_at DESC`
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var runs []*Run
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		r, err := db.GetRun(id)
+		if err != nil {
+			return nil, err
+		}
+		runs = append(runs, r)
+	}
+	return runs, nil
+}
+
 func (db *DB) ListProjects(entity string) ([]*Project, error) {
 	if entity == "" {
 		entity = "local"
