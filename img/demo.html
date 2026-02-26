@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>transformer-training - worb</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCI+CiAgPGNpcmNsZSBjeD0iNTAiIGN5PSI1MCIgcj0iNDAiIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzNCODJGNiIgc3Ryb2tlLXdpZHRoPSI1LjAiLz4KICA8cGF0aCBkPSJNMTQuMjAgMzIuMTYgTDE0LjQ3IDMxLjY5IEwxNC43NyAzMS4yMiBMMTUuMTEgMzAuNzUgTDE1LjQ5IDMwLjI5IEwxNS44OSAyOS44NCBMMTYuMzMgMjkuMzkgTDE2LjgxIDI4Ljk0IEwxNy4zMiAyOC41MSBMMTcuODUgMjguMDggTDE4LjQzIDI3LjY1IEwxOS4wMyAyNy4yNCBMMTkuNjYgMjYuODMgTDIwLjMyIDI2LjQzIEwyMS4wMiAyNi4wNCBMMjEuNzQgMjUuNjYgTDIyLjQ4IDI1LjI5IEwyMy4yNiAyNC45MyBMMjQuMDYgMjQuNTggTDI0Ljg5IDI0LjI0IEwyNS43NCAyMy45MiBMMjYuNjIgMjMuNjAgTDI3LjUyIDIzLjI5IEwyOC40NCAyMy4wMCBMMjkuMzggMjIuNzIgTDMwLjM0IDIyLjQ2IEwzMS4zMyAyMi4yMCBMMzIuMzMgMjEuOTYgTDMzLjM1IDIxLjczIEwzNC4zOCAyMS41MiBMMzUuNDMgMjEuMzIgTDM2LjUwIDIxLjEzIEwzNy41NyAyMC45NiBMMzguNjYgMjAuODAgTDM5Ljc3IDIwLjY2IEw0MC44OCAyMC41MyBMNDIuMDAgMjAuNDIgTDQzLjEzIDIwLjMyIEw0NC4yNiAyMC4yMyBMNDUuNDAgMjAuMTYgTDQ2LjU1IDIwLjExIEw0Ny43MCAyMC4wNyBMNDguODUgMjAuMDUgTDUwLjAwIDIwLjA0IEw1MS4xNSAyMC4wNSBMNTIuMzAgMjAuMDcgTDUzLjQ1IDIwLjExIEw1NC42MCAyMC4xNiBMNTUuNzQgMjAuMjMgTDU2Ljg3IDIwLjMyIEw1OC4wMCAyMC40MiBMNTkuMTIgMjAuNTMgTDYwLjIzIDIwLjY2IEw2MS4zNCAyMC44MCBMNjIuNDMgMjAuOTYgTDYzLjUwIDIxLjEzIEw2NC41NyAyMS4zMiBMNjUuNjIgMjEuNTIgTDY2LjY1IDIxLjczIEw2Ny42NyAyMS45NiBMNjguNjcgMjIuMjAgTDY5LjY2IDIyLjQ2IEw3MC42MiAyMi43MiBMNzEuNTYgMjMuMDAgTDcyLjQ4IDIzLjI5IEw3My4zOCAyMy42MCBMNzQuMjYgMjMuOTIgTDc1LjExIDI0LjI0IEw3NS45NCAyNC41OCBMNzYuNzQgMjQuOTMgTDc3LjUyIDI1LjI5IEw3OC4yNiAyNS42NiBMNzguOTggMjYuMDQgTDc5LjY4IDI2LjQzIEw4MC4zNCAyNi44MyBMODAuOTcgMjcuMjQgTDgxLjU3IDI3LjY1IEw4Mi4xNSAyOC4wOCBMODIuNjggMjguNTEgTDgzLjE5IDI4Ljk0IEw4My42NyAyOS4zOSBMODQuMTEgMjkuODQgTDg0LjUxIDMwLjI5IEw4NC44OSAzMC43NSBMODUuMjMgMzEuMjIgTDg1LjUzIDMxLjY5IEw4NS44MCAzMi4xNiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjM0I4MkY2IiBzdHJva2Utd2lkdGg9IjUuMCIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIi8+CiAgPHBhdGggZD0iTTEzLjk3IDY3LjM2IEwxMy43NyA2Ni44NyBMMTMuNjMgNjYuMzcgTDEzLjUzIDY1Ljg3IEwxMy40OSA2NS4zNyBMMTMuNTAgNjQuODYgTDEzLjU3IDY0LjM1IEwxMy42OSA2My44NSBMMTMuODcgNjMuMzUgTDE0LjExIDYyLjg2IEwxNC40MCA2Mi4zOCBMMTQuNzUgNjEuOTEgTDE1LjE1IDYxLjQ1IEwxNS42MCA2MS4wMSBMMTYuMTEgNjAuNTkgTDE2LjY3IDYwLjE5IEwxNy4yOCA1OS44MiBMMTcuOTQgNTkuNDggTDE4LjY1IDU5LjE3IEwxOS40MCA1OC44OSBMMjAuMTkgNTguNjUgTDIxLjAzIDU4LjQ1IEwyMS45MCA1OC4yOCBMMjIuODEgNTguMTYgTDIzLjc1IDU4LjA4IEwyNC43MiA1OC4wNSBMMjUuNzEgNTguMDYgTDI2LjczIDU4LjEyIEwyNy43NiA1OC4yMyBMMjguODEgNTguNDAgTDI5Ljg3IDU4LjYyIEwzMC45NCA1OC44OSBMMzIuMDEgNTkuMjIgTDMzLjA4IDU5LjYwIEwzNC4xNSA2MC4wNCBMMzUuMjEgNjAuNTQgTDM2LjI1IDYxLjA5IEwzNy4yOCA2MS42OSBMMzguMjkgNjIuMzUgTDM5LjI3IDYzLjA3IEw0MC4yMiA2My44MyBMNDEuMTQgNjQuNjUgTDQyLjAzIDY1LjUyIEw0Mi44NyA2Ni40MyBMNDMuNjggNjcuMzkgTDQ0LjQzIDY4LjM5IEw0NS4xMyA2OS40MyBMNDUuNzggNzAuNTEgTDQ2LjM3IDcxLjYzIEw0Ni45MCA3Mi43OCBMNDcuMzYgNzMuOTYgTDQ3Ljc1IDc1LjE3IEw0OC4wNyA3Ni40MSBMNDguMzIgNzcuNjcgTDQ4LjQ5IDc4Ljk1IEw0OC41OCA4MC4yNSBMNDguNTkgODEuNTcgTDQ4LjUxIDgyLjkwIEw0OC4zNiA4NC4yMyBMNDguMTEgODUuNTciIGZpbGw9Im5vbmUiIHN0cm9rZT0iIzNCODJGNiIgc3Ryb2tlLXdpZHRoPSI1LjAiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIvPgo8L3N2Zz4K">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2"></script>
+<style>
+:root{--bg:#0d1117;--surface:#161b22;--border:#30363d;--text:#e6edf3;--text-secondary:#8b949e;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--yellow:#d29922;--orange:#db6d28}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;background:var(--bg);color:var(--text);line-height:1.5}
+a{color:var(--accent);text-decoration:none}a:hover{text-decoration:underline}
+.container{max-width:1200px;margin:0 auto;padding:0 24px}
+header{background:var(--surface);border-bottom:1px solid var(--border);padding:16px 0;margin-bottom:32px}
+header .container{display:flex;align-items:center;justify-content:space-between}
+header h1{font-size:20px;font-weight:600}
+header h1 span{color:var(--accent)}
+.breadcrumb{display:flex;gap:8px;align-items:center;color:var(--text-secondary);margin-bottom:24px;font-size:14px}
+h2{font-size:24px;font-weight:600;margin-bottom:16px}
+.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:12px;font-weight:500}
+.badge.finished{background:rgba(88,166,255,0.2);color:var(--accent)}
+.badge.running{background:rgba(56,166,80,0.2);color:var(--green)}
+.badge.crashed{background:rgba(248,81,73,0.2);color:var(--red)}
+.run-header{display:flex;align-items:center;gap:12px;margin-bottom:24px}
+.tabs{display:flex;border-bottom:1px solid var(--border);margin-bottom:24px;gap:0}
+.tab{padding:8px 16px;cursor:pointer;color:var(--text-secondary);border-bottom:2px solid transparent;font-size:14px}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent)}
+.tab:hover{color:var(--text)}
+.tab-content{display:none}
+.tab-content.active{display:block}
+.chart-container{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px;margin-bottom:16px}
+.chart-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(400px,1fr));gap:16px}
+.chart-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.chart-title{font-size:14px;color:var(--text-secondary)}
+.zoom-reset-btn{background:var(--border);color:var(--text-secondary);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:11px;cursor:pointer;font-family:inherit}
+.zoom-reset-btn:hover{color:var(--text);border-color:var(--text-secondary)}
+.config-table{width:100%;border-collapse:collapse}
+.config-table th,.config-table td{text-align:left;padding:8px 12px;border-bottom:1px solid var(--border);font-size:14px}
+.config-table th{color:var(--text-secondary);font-weight:500;width:200px}
+.logs-container{background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:16px;font-family:'SF Mono','Fira Code',monospace;font-size:13px;max-height:500px;overflow-y:auto;white-space:pre-wrap;color:var(--text-secondary)}
+.empty-state{text-align:center;color:var(--text-secondary);padding:48px 0}
+table{width:100%;border-collapse:collapse}
+table th,table td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--border);font-size:14px}
+table th{color:var(--text-secondary);font-weight:500}
+table tr:hover{background:rgba(255,255,255,0.02)}
+</style>
+</head>
+<body>
+<header>
+    <div class="container">
+        <h1><a href="#" style="color:inherit"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="28" height="28" style="vertical-align:-4px;margin-right:6px"><circle cx="50" cy="50" r="40" fill="none" stroke="#3B82F6" stroke-width="5"/><path d="M14.20 32.16 L14.47 31.69 L14.77 31.22 L15.11 30.75 L15.49 30.29 L15.89 29.84 L16.33 29.39 L16.81 28.94 L17.32 28.51 L17.85 28.08 L18.43 27.65 L19.03 27.24 L19.66 26.83 L20.32 26.43 L21.02 26.04 L21.74 25.66 L22.48 25.29 L23.26 24.93 L24.06 24.58 L24.89 24.24 L25.74 23.92 L26.62 23.60 L27.52 23.29 L28.44 23.00 L29.38 22.72 L30.34 22.46 L31.33 22.20 L32.33 21.96 L33.35 21.73 L34.38 21.52 L35.43 21.32 L36.50 21.13 L37.57 20.96 L38.66 20.80 L39.77 20.66 L40.88 20.53 L42.00 20.42 L43.13 20.32 L44.26 20.23 L45.40 20.16 L46.55 20.11 L47.70 20.07 L48.85 20.05 L50.00 20.04 L51.15 20.05 L52.30 20.07 L53.45 20.11 L54.60 20.16 L55.74 20.23 L56.87 20.32 L58.00 20.42 L59.12 20.53 L60.23 20.66 L61.34 20.80 L62.43 20.96 L63.50 21.13 L64.57 21.32 L65.62 21.52 L66.65 21.73 L67.67 21.96 L68.67 22.20 L69.66 22.46 L70.62 22.72 L71.56 23.00 L72.48 23.29 L73.38 23.60 L74.26 23.92 L75.11 24.24 L75.94 24.58 L76.74 24.93 L77.52 25.29 L78.26 25.66 L78.98 26.04 L79.68 26.43 L80.34 26.83 L80.97 27.24 L81.57 27.65 L82.15 28.08 L82.68 28.51 L83.19 28.94 L83.67 29.39 L84.11 29.84 L84.51 30.29 L84.89 30.75 L85.23 31.22 L85.53 31.69 L85.80 32.16" fill="none" stroke="#3B82F6" stroke-width="5" stroke-linecap="round"/><path d="M13.97 67.36 L13.77 66.87 L13.63 66.37 L13.53 65.87 L13.49 65.37 L13.50 64.86 L13.57 64.35 L13.69 63.85 L13.87 63.35 L14.11 62.86 L14.40 62.38 L14.75 61.91 L15.15 61.45 L15.60 61.01 L16.11 60.59 L16.67 60.19 L17.28 59.82 L17.94 59.48 L18.65 59.17 L19.40 58.89 L20.19 58.65 L21.03 58.45 L21.90 58.28 L22.81 58.16 L23.75 58.08 L24.72 58.05 L25.71 58.06 L26.73 58.12 L27.76 58.23 L28.81 58.40 L29.87 58.62 L30.94 58.89 L32.01 59.22 L33.08 59.60 L34.15 60.04 L35.21 60.54 L36.25 61.09 L37.28 61.69 L38.29 62.35 L39.27 63.07 L40.22 63.83 L41.14 64.65 L42.03 65.52 L42.87 66.43 L43.68 67.39 L44.43 68.39 L45.13 69.43 L45.78 70.51 L46.37 71.63 L46.90 72.78 L47.36 73.96 L47.75 75.17 L48.07 76.41 L48.32 77.67 L48.49 78.95 L48.58 80.25 L48.59 81.57 L48.51 82.90 L48.36 84.23 L48.11 85.57" fill="none" stroke="#3B82F6" stroke-width="5" stroke-linecap="round"/></svg><span>worb</span></a></h1>
+    </div>
+</header>
+<div class="container">
+    <div class="breadcrumb">
+        <span>Projects</span>
+        <span>/</span>
+        <span>complex-run</span>
+        <span>/</span>
+        <span style="color:var(--text)">transformer-training</span>
+    </div>
+    <div class="run-header">
+        <h2 style="margin-bottom:0">transformer-training</h2>
+        <span class="badge finished">finished</span>
+    </div>
+    <div class="tabs">
+        <div class="tab active" data-tab="charts">Charts</div>
+        <div class="tab" data-tab="config">Config</div>
+        <div class="tab" data-tab="summary">Summary</div>
+        <div class="tab" data-tab="logs">Logs</div>
+    </div>
+    <div id="charts" class="tab-content active">
+        <div class="chart-grid" id="chart-grid"></div>
+    </div>
+    <div id="config" class="tab-content">
+        <table class="config-table" id="config-table"><tbody></tbody></table>
+    </div>
+    <div id="summary" class="tab-content">
+        <table class="config-table" id="summary-table"><tbody></tbody></table>
+    </div>
+    <div id="logs" class="tab-content">
+        <div class="logs-container" id="logs-container"></div>
+    </div>
+</div>
+<script>
+(function() {
+
+document.querySelectorAll('.tab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+        document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+        document.querySelectorAll('.tab-content').forEach(function(t) { t.classList.remove('active'); });
+        tab.classList.add('active');
+        document.getElementById(tab.dataset.tab).classList.add('active');
+    });
+});
+
+var allCharts = {};
+var syncing = false;
+
+function syncZoom(source, min, max) {
+    if (syncing) return;
+    syncing = true;
+    for (var k in allCharts) {
+        var c = allCharts[k];
+        var btn = c.canvas.closest('.chart-container').querySelector('.zoom-reset-btn');
+        btn.style.display = 'inline-block';
+        if (c === source) continue;
+        c.zoomScale('x', {min: min, max: max}, 'none');
+    }
+    syncing = false;
+}
+
+function resetAllZoom() {
+    for (var k in allCharts) {
+        allCharts[k].resetZoom();
+        allCharts[k].canvas.closest('.chart-container').querySelector('.zoom-reset-btn').style.display = 'none';
+    }
+}
+
+function createChart(grid, key, points) {
+    var div = document.createElement('div');
+    div.className = 'chart-container';
+    div.innerHTML = '<div class="chart-header"><div class="chart-title">' + key + '</div><button class="zoom-reset-btn" style="display:none" title="Reset zoom">Reset</button></div><canvas></canvas>';
+    grid.appendChild(div);
+    var resetBtn = div.querySelector('.zoom-reset-btn');
+    var chart = new Chart(div.querySelector('canvas'), {
+        type: 'line',
+        data: {
+            labels: points.map(function(p) { return p.s; }),
+            datasets: [{
+                label: key,
+                data: points.map(function(p) { return p.v; }),
+                borderColor: '#58a6ff',
+                backgroundColor: 'rgba(88,166,255,0.1)',
+                borderWidth: 1.5,
+                pointRadius: 0,
+                tension: 0.1,
+                fill: true
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                zoom: {
+                    zoom: {
+                        drag: {
+                            enabled: true,
+                            backgroundColor: 'rgba(88,166,255,0.15)',
+                            borderColor: '#58a6ff',
+                            borderWidth: 1
+                        },
+                        mode: 'x',
+                        onZoomComplete: function(ctx) {
+                            syncZoom(ctx.chart, ctx.chart.scales.x.min, ctx.chart.scales.x.max);
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { title: { display: true, text: 'step', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                y: { title: { display: true, text: key, color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } }
+            },
+            animation: false
+        }
+    });
+    resetBtn.addEventListener('click', function() { resetAllZoom(); });
+    return chart;
+}
+
+function renderTable(tableId, obj) {
+    var tbody = document.querySelector('#' + tableId + ' tbody');
+    if (!obj || Object.keys(obj).length === 0) {
+        tbody.innerHTML = '<tr><td colspan="2" style="color:var(--text-secondary);text-align:center">Empty</td></tr>';
+        return;
+    }
+    Object.keys(obj).sort().forEach(function(key) {
+        var tr = document.createElement('tr');
+        var val = obj[key];
+        if (typeof val === 'object') val = JSON.stringify(val);
+        tr.innerHTML = '<th>' + key + '</th><td>' + val + '</td>';
+        tbody.appendChild(tr);
+    });
+}
+
+function seededRandom(seed) {
+    var x = Math.sin(seed) * 10000;
+    return x - Math.floor(x);
+}
+
+function generateData() {
+    var data = {};
+    var steps = 500;
+
+    function gen(name, fn) {
+        data[name] = [];
+        for (var i = 0; i < steps; i++) {
+            var step = i * 2;
+            var noise = (seededRandom(i * 17 + name.length * 31) - 0.5) * 0.02;
+            data[name].push({ s: step, v: fn(i, step, noise) });
+        }
+    }
+
+    gen('train/loss', function(i, s, n) {
+        return 4.5 * Math.exp(-i / 120) + 0.8 + n * (4.5 * Math.exp(-i / 120));
+    });
+    gen('val/loss', function(i, s, n) {
+        return 4.8 * Math.exp(-i / 130) + 0.9 + n * (4.8 * Math.exp(-i / 130)) + (i > 350 ? (i - 350) * 0.0008 : 0);
+    });
+    gen('train/accuracy', function(i, s, n) {
+        return Math.min(0.92, 0.05 + 0.87 * (1 - Math.exp(-i / 100))) + n * 0.3;
+    });
+    gen('train/perplexity', function(i, s, n) {
+        return Math.exp(4.5 * Math.exp(-i / 120) + 0.8 + n * 0.5);
+    });
+    gen('train/learning_rate', function(i, s, n) {
+        if (i < 20) return 3e-4 * (i / 20);
+        return 3e-4 * Math.max(0.1, Math.cos(((i - 20) / (steps - 20)) * Math.PI / 2));
+    });
+    gen('train/grad_norm', function(i, s, n) {
+        var base = 2.0 * Math.exp(-i / 200) + 0.5;
+        return base + n * base * 3 + (seededRandom(i * 7 + 99) < 0.03 ? seededRandom(i * 13) * 5 : 0);
+    });
+
+    for (var layer = 0; layer < 6; layer++) {
+        (function(l) {
+            gen('norms/layer_' + l, function(i, s, n) {
+                var base = 0.5 + l * 0.15 + 0.3 * (1 - Math.exp(-i / 80));
+                return base + n * 0.5 + seededRandom(i * (l + 3) * 11) * 0.04;
+            });
+        })(layer);
+    }
+
+    return data;
+}
+
+var config = {
+    batch_size: 64,
+    d_model: 512,
+    dropout: 0.1,
+    epochs: 10,
+    learning_rate: 0.0003,
+    max_seq_len: 256,
+    n_heads: 8,
+    n_layers: 6,
+    optimizer: "adamw",
+    vocab_size: 32000,
+    warmup_steps: 40,
+    weight_decay: 0.01
+};
+
+var summary = {
+    best_val_loss: 1.142,
+    final_train_accuracy: 0.891,
+    final_train_loss: 0.923,
+    total_steps: 998,
+    training_time_seconds: 3847.2
+};
+
+var logs = [
+    "Initializing transformer model with 6 layers, 512 d_model, 8 heads",
+    "Model parameters: 38,412,800",
+    "Loading dataset: wikitext-103-raw-v1",
+    "Tokenizer: BPE with vocab_size=32000",
+    "Training on 1x NVIDIA A100 80GB",
+    "Step 0 | loss: 10.372 | lr: 0.000000 | grad_norm: 12.451",
+    "Step 50 | loss: 6.891 | lr: 0.000225 | grad_norm: 3.217",
+    "Step 100 | loss: 4.234 | lr: 0.000300 | grad_norm: 1.854",
+    "Step 150 | loss: 3.102 | lr: 0.000296 | grad_norm: 1.423",
+    "Step 200 | loss: 2.451 | lr: 0.000284 | grad_norm: 1.102",
+    "Validation @ step 200 | val_loss: 2.892",
+    "Step 250 | loss: 1.987 | lr: 0.000267 | grad_norm: 0.934",
+    "Step 300 | loss: 1.654 | lr: 0.000245 | grad_norm: 0.812",
+    "Step 350 | loss: 1.342 | lr: 0.000219 | grad_norm: 0.743",
+    "Validation @ step 400 | val_loss: 1.487",
+    "Step 400 | loss: 1.187 | lr: 0.000190 | grad_norm: 0.698",
+    "Step 450 | loss: 1.054 | lr: 0.000159 | grad_norm: 0.671",
+    "Step 500 | loss: 0.987 | lr: 0.000127 | grad_norm: 0.654",
+    "Validation @ step 600 | val_loss: 1.198",
+    "Step 550 | loss: 0.963 | lr: 0.000095 | grad_norm: 0.642",
+    "Step 600 | loss: 0.945 | lr: 0.000065 | grad_norm: 0.631",
+    "Step 650 | loss: 0.934 | lr: 0.000039 | grad_norm: 0.628",
+    "Validation @ step 800 | val_loss: 1.142",
+    "Step 700 | loss: 0.928 | lr: 0.000030 | grad_norm: 0.625",
+    "Training complete. Best val_loss: 1.142 at step 800",
+    "Model saved to checkpoints/best_model.pt"
+];
+
+var grid = document.getElementById('chart-grid');
+var chartData = generateData();
+var chartOrder = ['train/loss', 'val/loss', 'train/accuracy', 'train/perplexity', 'train/learning_rate', 'train/grad_norm',
+    'norms/layer_0', 'norms/layer_1', 'norms/layer_2', 'norms/layer_3', 'norms/layer_4', 'norms/layer_5'];
+chartOrder.forEach(function(key) {
+    if (chartData[key]) {
+        allCharts[key] = createChart(grid, key, chartData[key]);
+    }
+});
+
+renderTable('config-table', config);
+renderTable('summary-table', summary);
+document.getElementById('logs-container').textContent = logs.join('\n');
+
+})();
+</script>
+</body>
+</html>
