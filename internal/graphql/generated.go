@@ -133,11 +133,14 @@ type ComplexityRoot struct {
 	}
 
 	Project struct {
-		Bucket func(childComplexity int, name string, missingOk *bool) int
-		Entity func(childComplexity int) int
-		ID     func(childComplexity int) int
-		Name   func(childComplexity int) int
-		Runs   func(childComplexity int, first *int, order *string, filters *string) int
+		Bucket     func(childComplexity int, name string, missingOk *bool) int
+		Entity     func(childComplexity int) int
+		ID         func(childComplexity int) int
+		InternalID func(childComplexity int) int
+		Name       func(childComplexity int) int
+		ReadOnly   func(childComplexity int) int
+		RunCount   func(childComplexity int, filters *string) int
+		Runs       func(childComplexity int, first *int, order *string, filters *string, after *string) int
 	}
 
 	Query struct {
@@ -158,6 +161,7 @@ type ComplexityRoot struct {
 		EventsTail       func(childComplexity int) int
 		Group            func(childComplexity int) int
 		HeartbeatAt      func(childComplexity int) int
+		HistoryKeys      func(childComplexity int) int
 		HistoryLineCount func(childComplexity int) int
 		HistoryTail      func(childComplexity int) int
 		Host             func(childComplexity int) int
@@ -168,11 +172,15 @@ type ComplexityRoot struct {
 		Notes            func(childComplexity int) int
 		Program          func(childComplexity int) int
 		Project          func(childComplexity int) int
+		ProjectID        func(childComplexity int) int
+		ReadOnly         func(childComplexity int) int
 		State            func(childComplexity int) int
 		SummaryMetrics   func(childComplexity int) int
 		SweepName        func(childComplexity int) int
+		SystemMetrics    func(childComplexity int) int
 		Tags             func(childComplexity int) int
 		UpdatedAt        func(childComplexity int) int
+		User             func(childComplexity int) int
 		WandbConfig      func(childComplexity int, keys []string) int
 	}
 
@@ -184,6 +192,11 @@ type ComplexityRoot struct {
 	RunEdge struct {
 		Cursor func(childComplexity int) int
 		Node   func(childComplexity int) int
+	}
+
+	RunUser struct {
+		Name     func(childComplexity int) int
+		Username func(childComplexity int) int
 	}
 
 	ServerInfo struct {
@@ -235,7 +248,8 @@ type MutationResolver interface {
 	CreateRunFiles(ctx context.Context, input CreateRunFilesInput) (*CreateRunFilesPayload, error)
 }
 type ProjectResolver interface {
-	Runs(ctx context.Context, obj *Project, first *int, order *string, filters *string) (*RunConnection, error)
+	RunCount(ctx context.Context, obj *Project, filters *string) (*int, error)
+	Runs(ctx context.Context, obj *Project, first *int, order *string, filters *string, after *string) (*RunConnection, error)
 	Bucket(ctx context.Context, obj *Project, name string, missingOk *bool) (*Run, error)
 }
 type QueryResolver interface {
@@ -553,12 +567,35 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Project.ID(childComplexity), true
+	case "Project.internalId":
+		if e.complexity.Project.InternalID == nil {
+			break
+		}
+
+		return e.complexity.Project.InternalID(childComplexity), true
 	case "Project.name":
 		if e.complexity.Project.Name == nil {
 			break
 		}
 
 		return e.complexity.Project.Name(childComplexity), true
+	case "Project.readOnly":
+		if e.complexity.Project.ReadOnly == nil {
+			break
+		}
+
+		return e.complexity.Project.ReadOnly(childComplexity), true
+	case "Project.runCount":
+		if e.complexity.Project.RunCount == nil {
+			break
+		}
+
+		args, err := ec.field_Project_runCount_args(ctx, rawArgs)
+		if err != nil {
+			return 0, false
+		}
+
+		return e.complexity.Project.RunCount(childComplexity, args["filters"].(*string)), true
 	case "Project.runs":
 		if e.complexity.Project.Runs == nil {
 			break
@@ -569,7 +606,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Project.Runs(childComplexity, args["first"].(*int), args["order"].(*string), args["filters"].(*string)), true
+		return e.complexity.Project.Runs(childComplexity, args["first"].(*int), args["order"].(*string), args["filters"].(*string), args["after"].(*string)), true
 
 	case "Query.entity":
 		if e.complexity.Query.Entity == nil {
@@ -671,6 +708,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Run.HeartbeatAt(childComplexity), true
+	case "Run.historyKeys":
+		if e.complexity.Run.HistoryKeys == nil {
+			break
+		}
+
+		return e.complexity.Run.HistoryKeys(childComplexity), true
 	case "Run.historyLineCount":
 		if e.complexity.Run.HistoryLineCount == nil {
 			break
@@ -731,6 +774,18 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Run.Project(childComplexity), true
+	case "Run.projectId":
+		if e.complexity.Run.ProjectID == nil {
+			break
+		}
+
+		return e.complexity.Run.ProjectID(childComplexity), true
+	case "Run.readOnly":
+		if e.complexity.Run.ReadOnly == nil {
+			break
+		}
+
+		return e.complexity.Run.ReadOnly(childComplexity), true
 	case "Run.state":
 		if e.complexity.Run.State == nil {
 			break
@@ -749,6 +804,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Run.SweepName(childComplexity), true
+	case "Run.systemMetrics":
+		if e.complexity.Run.SystemMetrics == nil {
+			break
+		}
+
+		return e.complexity.Run.SystemMetrics(childComplexity), true
 	case "Run.tags":
 		if e.complexity.Run.Tags == nil {
 			break
@@ -761,6 +822,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Run.UpdatedAt(childComplexity), true
+	case "Run.user":
+		if e.complexity.Run.User == nil {
+			break
+		}
+
+		return e.complexity.Run.User(childComplexity), true
 	case "Run.wandbConfig":
 		if e.complexity.Run.WandbConfig == nil {
 			break
@@ -798,6 +865,19 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.RunEdge.Node(childComplexity), true
+
+	case "RunUser.name":
+		if e.complexity.RunUser.Name == nil {
+			break
+		}
+
+		return e.complexity.RunUser.Name(childComplexity), true
+	case "RunUser.username":
+		if e.complexity.RunUser.Username == nil {
+			break
+		}
+
+		return e.complexity.RunUser.Username(childComplexity), true
 
 	case "ServerInfo.cliVersionInfo":
 		if e.complexity.ServerInfo.CliVersionInfo == nil {
@@ -1213,6 +1293,17 @@ func (ec *executionContext) field_Project_bucket_args(ctx context.Context, rawAr
 	return args, nil
 }
 
+func (ec *executionContext) field_Project_runCount_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
+	var err error
+	args := map[string]any{}
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "filters", ec.unmarshalOJSONString2ᚖstring)
+	if err != nil {
+		return nil, err
+	}
+	args["filters"] = arg0
+	return args, nil
+}
+
 func (ec *executionContext) field_Project_runs_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
@@ -1231,6 +1322,11 @@ func (ec *executionContext) field_Project_runs_args(ctx context.Context, rawArgs
 		return nil, err
 	}
 	args["filters"] = arg2
+	arg3, err := graphql.ProcessArgField(ctx, rawArgs, "after", ec.unmarshalOString2ᚖstring)
+	if err != nil {
+		return nil, err
+	}
+	args["after"] = arg3
 	return args, nil
 }
 
@@ -2596,6 +2692,35 @@ func (ec *executionContext) fieldContext_Project_id(_ context.Context, field gra
 	return fc, nil
 }
 
+func (ec *executionContext) _Project_internalId(ctx context.Context, field graphql.CollectedField, obj *Project) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Project_internalId,
+		func(ctx context.Context) (any, error) {
+			return obj.InternalID, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Project_internalId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Project",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Project_name(ctx context.Context, field graphql.CollectedField, obj *Project) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -2662,6 +2787,76 @@ func (ec *executionContext) fieldContext_Project_entity(_ context.Context, field
 	return fc, nil
 }
 
+func (ec *executionContext) _Project_readOnly(ctx context.Context, field graphql.CollectedField, obj *Project) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Project_readOnly,
+		func(ctx context.Context) (any, error) {
+			return obj.ReadOnly, nil
+		},
+		nil,
+		ec.marshalOBoolean2ᚖbool,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Project_readOnly(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Project",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Project_runCount(ctx context.Context, field graphql.CollectedField, obj *Project) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Project_runCount,
+		func(ctx context.Context) (any, error) {
+			fc := graphql.GetFieldContext(ctx)
+			return ec.resolvers.Project().RunCount(ctx, obj, fc.Args["filters"].(*string))
+		},
+		nil,
+		ec.marshalOInt2ᚖint,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Project_runCount(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Project",
+		Field:      field,
+		IsMethod:   true,
+		IsResolver: true,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	defer func() {
+		if r := recover(); r != nil {
+			err = ec.Recover(ctx, r)
+			ec.Error(ctx, err)
+		}
+	}()
+	ctx = graphql.WithFieldContext(ctx, fc)
+	if fc.Args, err = ec.field_Project_runCount_args(ctx, field.ArgumentMap(ec.Variables)); err != nil {
+		ec.Error(ctx, err)
+		return fc, err
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Project_runs(ctx context.Context, field graphql.CollectedField, obj *Project) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -2670,7 +2865,7 @@ func (ec *executionContext) _Project_runs(ctx context.Context, field graphql.Col
 		ec.fieldContext_Project_runs,
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.resolvers.Project().Runs(ctx, obj, fc.Args["first"].(*int), fc.Args["order"].(*string), fc.Args["filters"].(*string))
+			return ec.resolvers.Project().Runs(ctx, obj, fc.Args["first"].(*int), fc.Args["order"].(*string), fc.Args["filters"].(*string), fc.Args["after"].(*string))
 		},
 		nil,
 		ec.marshalORunConnection2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐRunConnection,
@@ -2742,6 +2937,8 @@ func (ec *executionContext) fieldContext_Project_bucket(ctx context.Context, fie
 				return ec.fieldContext_Run_displayName(ctx, field)
 			case "project":
 				return ec.fieldContext_Run_project(ctx, field)
+			case "projectId":
+				return ec.fieldContext_Run_projectId(ctx, field)
 			case "config":
 				return ec.fieldContext_Run_config(ctx, field)
 			case "summaryMetrics":
@@ -2782,6 +2979,14 @@ func (ec *executionContext) fieldContext_Project_bucket(ctx context.Context, fie
 				return ec.fieldContext_Run_historyTail(ctx, field)
 			case "eventsTail":
 				return ec.fieldContext_Run_eventsTail(ctx, field)
+			case "readOnly":
+				return ec.fieldContext_Run_readOnly(ctx, field)
+			case "systemMetrics":
+				return ec.fieldContext_Run_systemMetrics(ctx, field)
+			case "historyKeys":
+				return ec.fieldContext_Run_historyKeys(ctx, field)
+			case "user":
+				return ec.fieldContext_Run_user(ctx, field)
 			case "wandbConfig":
 				return ec.fieldContext_Run_wandbConfig(ctx, field)
 			}
@@ -2872,10 +3077,16 @@ func (ec *executionContext) fieldContext_Query_project(ctx context.Context, fiel
 			switch field.Name {
 			case "id":
 				return ec.fieldContext_Project_id(ctx, field)
+			case "internalId":
+				return ec.fieldContext_Project_internalId(ctx, field)
 			case "name":
 				return ec.fieldContext_Project_name(ctx, field)
 			case "entity":
 				return ec.fieldContext_Project_entity(ctx, field)
+			case "readOnly":
+				return ec.fieldContext_Project_readOnly(ctx, field)
+			case "runCount":
+				return ec.fieldContext_Project_runCount(ctx, field)
 			case "runs":
 				return ec.fieldContext_Project_runs(ctx, field)
 			case "bucket":
@@ -2925,10 +3136,16 @@ func (ec *executionContext) fieldContext_Query_model(ctx context.Context, field 
 			switch field.Name {
 			case "id":
 				return ec.fieldContext_Project_id(ctx, field)
+			case "internalId":
+				return ec.fieldContext_Project_internalId(ctx, field)
 			case "name":
 				return ec.fieldContext_Project_name(ctx, field)
 			case "entity":
 				return ec.fieldContext_Project_entity(ctx, field)
+			case "readOnly":
+				return ec.fieldContext_Project_readOnly(ctx, field)
+			case "runCount":
+				return ec.fieldContext_Project_runCount(ctx, field)
 			case "runs":
 				return ec.fieldContext_Project_runs(ctx, field)
 			case "bucket":
@@ -3260,16 +3477,51 @@ func (ec *executionContext) fieldContext_Run_project(_ context.Context, field gr
 			switch field.Name {
 			case "id":
 				return ec.fieldContext_Project_id(ctx, field)
+			case "internalId":
+				return ec.fieldContext_Project_internalId(ctx, field)
 			case "name":
 				return ec.fieldContext_Project_name(ctx, field)
 			case "entity":
 				return ec.fieldContext_Project_entity(ctx, field)
+			case "readOnly":
+				return ec.fieldContext_Project_readOnly(ctx, field)
+			case "runCount":
+				return ec.fieldContext_Project_runCount(ctx, field)
 			case "runs":
 				return ec.fieldContext_Project_runs(ctx, field)
 			case "bucket":
 				return ec.fieldContext_Project_bucket(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type Project", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Run_projectId(ctx context.Context, field graphql.CollectedField, obj *Run) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Run_projectId,
+		func(ctx context.Context) (any, error) {
+			return obj.ProjectID, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Run_projectId(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Run",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
 		},
 	}
 	return fc, nil
@@ -3855,6 +4107,128 @@ func (ec *executionContext) fieldContext_Run_eventsTail(_ context.Context, field
 	return fc, nil
 }
 
+func (ec *executionContext) _Run_readOnly(ctx context.Context, field graphql.CollectedField, obj *Run) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Run_readOnly,
+		func(ctx context.Context) (any, error) {
+			return obj.ReadOnly, nil
+		},
+		nil,
+		ec.marshalOBoolean2ᚖbool,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Run_readOnly(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Run",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Run_systemMetrics(ctx context.Context, field graphql.CollectedField, obj *Run) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Run_systemMetrics,
+		func(ctx context.Context) (any, error) {
+			return obj.SystemMetrics, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Run_systemMetrics(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Run",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Run_historyKeys(ctx context.Context, field graphql.CollectedField, obj *Run) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Run_historyKeys,
+		func(ctx context.Context) (any, error) {
+			return obj.HistoryKeys, nil
+		},
+		nil,
+		ec.marshalOJSONString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Run_historyKeys(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Run",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type JSONString does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _Run_user(ctx context.Context, field graphql.CollectedField, obj *Run) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Run_user,
+		func(ctx context.Context) (any, error) {
+			return obj.User, nil
+		},
+		nil,
+		ec.marshalORunUser2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐRunUser,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Run_user(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Run",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "name":
+				return ec.fieldContext_RunUser_name(ctx, field)
+			case "username":
+				return ec.fieldContext_RunUser_username(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type RunUser", field.Name)
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Run_wandbConfig(ctx context.Context, field graphql.CollectedField, obj *Run) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -3998,6 +4372,8 @@ func (ec *executionContext) fieldContext_RunEdge_node(_ context.Context, field g
 				return ec.fieldContext_Run_displayName(ctx, field)
 			case "project":
 				return ec.fieldContext_Run_project(ctx, field)
+			case "projectId":
+				return ec.fieldContext_Run_projectId(ctx, field)
 			case "config":
 				return ec.fieldContext_Run_config(ctx, field)
 			case "summaryMetrics":
@@ -4038,6 +4414,14 @@ func (ec *executionContext) fieldContext_RunEdge_node(_ context.Context, field g
 				return ec.fieldContext_Run_historyTail(ctx, field)
 			case "eventsTail":
 				return ec.fieldContext_Run_eventsTail(ctx, field)
+			case "readOnly":
+				return ec.fieldContext_Run_readOnly(ctx, field)
+			case "systemMetrics":
+				return ec.fieldContext_Run_systemMetrics(ctx, field)
+			case "historyKeys":
+				return ec.fieldContext_Run_historyKeys(ctx, field)
+			case "user":
+				return ec.fieldContext_Run_user(ctx, field)
 			case "wandbConfig":
 				return ec.fieldContext_Run_wandbConfig(ctx, field)
 			}
@@ -4066,6 +4450,64 @@ func (ec *executionContext) _RunEdge_cursor(ctx context.Context, field graphql.C
 func (ec *executionContext) fieldContext_RunEdge_cursor(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
 	fc = &graphql.FieldContext{
 		Object:     "RunEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _RunUser_name(ctx context.Context, field graphql.CollectedField, obj *RunUser) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_RunUser_name,
+		func(ctx context.Context) (any, error) {
+			return obj.Name, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_RunUser_name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RunUser",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _RunUser_username(ctx context.Context, field graphql.CollectedField, obj *RunUser) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_RunUser_username,
+		func(ctx context.Context) (any, error) {
+			return obj.Username, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_RunUser_username(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "RunUser",
 		Field:      field,
 		IsMethod:   false,
 		IsResolver: false,
@@ -4333,6 +4775,8 @@ func (ec *executionContext) fieldContext_UpsertBucketPayload_bucket(_ context.Co
 				return ec.fieldContext_Run_displayName(ctx, field)
 			case "project":
 				return ec.fieldContext_Run_project(ctx, field)
+			case "projectId":
+				return ec.fieldContext_Run_projectId(ctx, field)
 			case "config":
 				return ec.fieldContext_Run_config(ctx, field)
 			case "summaryMetrics":
@@ -4373,6 +4817,14 @@ func (ec *executionContext) fieldContext_UpsertBucketPayload_bucket(_ context.Co
 				return ec.fieldContext_Run_historyTail(ctx, field)
 			case "eventsTail":
 				return ec.fieldContext_Run_eventsTail(ctx, field)
+			case "readOnly":
+				return ec.fieldContext_Run_readOnly(ctx, field)
+			case "systemMetrics":
+				return ec.fieldContext_Run_systemMetrics(ctx, field)
+			case "historyKeys":
+				return ec.fieldContext_Run_historyKeys(ctx, field)
+			case "user":
+				return ec.fieldContext_Run_user(ctx, field)
 			case "wandbConfig":
 				return ec.fieldContext_Run_wandbConfig(ctx, field)
 			}
@@ -7400,6 +7852,8 @@ func (ec *executionContext) _Project(ctx context.Context, sel ast.SelectionSet, 
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
+		case "internalId":
+			out.Values[i] = ec._Project_internalId(ctx, field, obj)
 		case "name":
 			out.Values[i] = ec._Project_name(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -7410,6 +7864,41 @@ func (ec *executionContext) _Project(ctx context.Context, sel ast.SelectionSet, 
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&out.Invalids, 1)
 			}
+		case "readOnly":
+			out.Values[i] = ec._Project_readOnly(ctx, field, obj)
+		case "runCount":
+			field := field
+
+			innerFunc := func(ctx context.Context, _ *graphql.FieldSet) (res graphql.Marshaler) {
+				defer func() {
+					if r := recover(); r != nil {
+						ec.Error(ctx, ec.Recover(ctx, r))
+					}
+				}()
+				res = ec._Project_runCount(ctx, field, obj)
+				return res
+			}
+
+			if field.Deferrable != nil {
+				dfs, ok := deferred[field.Deferrable.Label]
+				di := 0
+				if ok {
+					dfs.AddField(field)
+					di = len(dfs.Values) - 1
+				} else {
+					dfs = graphql.NewFieldSet([]graphql.CollectedField{field})
+					deferred[field.Deferrable.Label] = dfs
+				}
+				dfs.Concurrently(di, func(ctx context.Context) graphql.Marshaler {
+					return innerFunc(ctx, dfs)
+				})
+
+				// don't run the out.Concurrently() call below
+				out.Values[i] = graphql.Null
+				continue
+			}
+
+			out.Concurrently(i, func(ctx context.Context) graphql.Marshaler { return innerFunc(ctx, out) })
 		case "runs":
 			field := field
 
@@ -7669,6 +8158,8 @@ func (ec *executionContext) _Run(ctx context.Context, sel ast.SelectionSet, obj 
 			out.Values[i] = ec._Run_displayName(ctx, field, obj)
 		case "project":
 			out.Values[i] = ec._Run_project(ctx, field, obj)
+		case "projectId":
+			out.Values[i] = ec._Run_projectId(ctx, field, obj)
 		case "config":
 			out.Values[i] = ec._Run_config(ctx, field, obj)
 		case "summaryMetrics":
@@ -7709,6 +8200,14 @@ func (ec *executionContext) _Run(ctx context.Context, sel ast.SelectionSet, obj 
 			out.Values[i] = ec._Run_historyTail(ctx, field, obj)
 		case "eventsTail":
 			out.Values[i] = ec._Run_eventsTail(ctx, field, obj)
+		case "readOnly":
+			out.Values[i] = ec._Run_readOnly(ctx, field, obj)
+		case "systemMetrics":
+			out.Values[i] = ec._Run_systemMetrics(ctx, field, obj)
+		case "historyKeys":
+			out.Values[i] = ec._Run_historyKeys(ctx, field, obj)
+		case "user":
+			out.Values[i] = ec._Run_user(ctx, field, obj)
 		case "wandbConfig":
 			field := field
 
@@ -7830,6 +8329,44 @@ func (ec *executionContext) _RunEdge(ctx context.Context, sel ast.SelectionSet, 
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var runUserImplementors = []string{"RunUser"}
+
+func (ec *executionContext) _RunUser(ctx context.Context, sel ast.SelectionSet, obj *RunUser) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, runUserImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("RunUser")
+		case "name":
+			out.Values[i] = ec._RunUser_name(ctx, field, obj)
+		case "username":
+			out.Values[i] = ec._RunUser_username(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9344,6 +9881,13 @@ func (ec *executionContext) marshalORunConnection2ᚖgithubᚗcomᚋsarnaᚋworb
 		return graphql.Null
 	}
 	return ec._RunConnection(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalORunUser2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐRunUser(ctx context.Context, sel ast.SelectionSet, v *RunUser) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._RunUser(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalOServerInfo2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐServerInfo(ctx context.Context, sel ast.SelectionSet, v *ServerInfo) graphql.Marshaler {

@@ -110,9 +110,12 @@ type UpsertBucketPayload {
 
 type Project {
   id: String!
+  internalId: String
   name: String!
   entity: Entity!
-  runs(first: Int, order: String, filters: JSONString): RunConnection
+  readOnly: Boolean
+  runCount(filters: JSONString): Int
+  runs(first: Int, order: String, filters: JSONString, after: String): RunConnection
   bucket(name: String!, missingOk: Boolean): Run
 }
 
@@ -143,11 +146,17 @@ type PageInfo {
   endCursor: String
 }
 
+type RunUser {
+  name: String
+  username: String
+}
+
 type Run {
   id: String!
   name: String!
   displayName: String
   project: Project
+  projectId: String
   config: JSONString
   summaryMetrics: JSONString
   state: String
@@ -168,6 +177,10 @@ type Run {
   heartbeatAt: String
   historyTail: String
   eventsTail: String
+  readOnly: Boolean
+  systemMetrics: String
+  historyKeys: JSONString
+  user: RunUser
   wandbConfig(keys: [String!]): JSONString
 }
 

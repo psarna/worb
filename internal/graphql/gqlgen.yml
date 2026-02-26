@@ -25,6 +25,8 @@ models:
         resolver: true
       runs:
         resolver: true
+      runCount:
+        resolver: true
   Run:
     fields:
       wandbConfig:

@@ -281,8 +281,28 @@ func (r *mutationResolver) CreateRunFiles(ctx context.Context, input CreateRunFi
 	}, nil
 }
 
+// RunCount is the resolver for the runCount field.
+func (r *projectResolver) RunCount(ctx context.Context, obj *Project, filters *string) (*int, error) {
+	var displayName string
+	if filters != nil {
+		var f map[string]interface{}
+		if err := json.Unmarshal([]byte(*filters), &f); err == nil {
+			if dn, ok := f["display_name"].(string); ok {
+				displayName = dn
+			}
+		}
+	}
+
+	runs, err := r.Store.ListRunsFiltered(obj.ID, displayName)
+	if err != nil && err != sql.ErrNoRows {
+		return nil, err
+	}
+	count := len(runs)
+	return &count, nil
+}
+
 // Runs is the resolver for the runs field.
-func (r *projectResolver) Runs(ctx context.Context, obj *Project, first *int, order *string, filters *string) (*RunConnection, error) {
+func (r *projectResolver) Runs(ctx context.Context, obj *Project, first *int, order *string, filters *string, after *string) (*RunConnection, error) {
 	var displayName string
 	if filters != nil {
 		var f map[string]interface{}

@@ -137,11 +137,14 @@ type PageInfo struct {
 }
 
 type Project struct {
-	ID     string         `json:"id"`
-	Name   string         `json:"name"`
-	Entity *Entity        `json:"entity"`
-	Runs   *RunConnection `json:"runs,omitempty"`
-	Bucket *Run           `json:"bucket,omitempty"`
+	ID         string         `json:"id"`
+	InternalID *string        `json:"internalId,omitempty"`
+	Name       string         `json:"name"`
+	Entity     *Entity        `json:"entity"`
+	ReadOnly   *bool          `json:"readOnly,omitempty"`
+	RunCount   *int           `json:"runCount,omitempty"`
+	Runs       *RunConnection `json:"runs,omitempty"`
+	Bucket     *Run           `json:"bucket,omitempty"`
 }
 
 type Query struct {
@@ -152,6 +155,7 @@ type Run struct {
 	Name             string   `json:"name"`
 	DisplayName      *string  `json:"displayName,omitempty"`
 	Project          *Project `json:"project,omitempty"`
+	ProjectID        *string  `json:"projectId,omitempty"`
 	Config           *string  `json:"config,omitempty"`
 	SummaryMetrics   *string  `json:"summaryMetrics,omitempty"`
 	State            *string  `json:"state,omitempty"`
@@ -172,6 +176,10 @@ type Run struct {
 	HeartbeatAt      *string  `json:"heartbeatAt,omitempty"`
 	HistoryTail      *string  `json:"historyTail,omitempty"`
 	EventsTail       *string  `json:"eventsTail,omitempty"`
+	ReadOnly         *bool    `json:"readOnly,omitempty"`
+	SystemMetrics    *string  `json:"systemMetrics,omitempty"`
+	HistoryKeys      *string  `json:"historyKeys,omitempty"`
+	User             *RunUser `json:"user,omitempty"`
 	WandbConfig      *string  `json:"wandbConfig,omitempty"`
 }
 
@@ -183,6 +191,11 @@ type RunConnection struct {
 type RunEdge struct {
 	Node   *Run   `json:"node"`
 	Cursor string `json:"cursor"`
+}
+
+type RunUser struct {
+	Name     *string `json:"name,omitempty"`
+	Username *string `json:"username,omitempty"`
 }
 
 type ServerInfo struct {
