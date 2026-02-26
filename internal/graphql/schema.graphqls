@@ -40,6 +40,7 @@ scalar JSONString
 type ApiKey {
   id: String!
   name: String!
+  description: String
 }
 
 type ApiKeyConnection {

@@ -49,8 +49,9 @@ type DirectiveRoot struct {
 
 type ComplexityRoot struct {
 	ApiKey struct {
-		ID   func(childComplexity int) int
-		Name func(childComplexity int) int
+		Description func(childComplexity int) int
+		ID          func(childComplexity int) int
+		Name        func(childComplexity int) int
 	}
 
 	ApiKeyConnection struct {
@@ -299,6 +300,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 	_ = ec
 	switch typeName + "." + field {
 
+	case "ApiKey.description":
+		if e.complexity.ApiKey.Description == nil {
+			break
+		}
+
+		return e.complexity.ApiKey.Description(childComplexity), true
 	case "ApiKey.id":
 		if e.complexity.ApiKey.ID == nil {
 			break
@@ -1573,6 +1580,35 @@ func (ec *executionContext) fieldContext_ApiKey_name(_ context.Context, field gr
 	return fc, nil
 }
 
+func (ec *executionContext) _ApiKey_description(ctx context.Context, field graphql.CollectedField, obj *APIKey) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ApiKey_description,
+		func(ctx context.Context) (any, error) {
+			return obj.Description, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_ApiKey_description(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ApiKey",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _ApiKeyConnection_edges(ctx context.Context, field graphql.CollectedField, obj *APIKeyConnection) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -1634,6 +1670,8 @@ func (ec *executionContext) fieldContext_ApiKeyEdge_node(_ context.Context, fiel
 				return ec.fieldContext_ApiKey_id(ctx, field)
 			case "name":
 				return ec.fieldContext_ApiKey_name(ctx, field)
+			case "description":
+				return ec.fieldContext_ApiKey_description(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type ApiKey", field.Name)
 		},
@@ -7498,6 +7536,8 @@ func (ec *executionContext) _ApiKey(ctx context.Context, sel ast.SelectionSet, o
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "description":
+			out.Values[i] = ec._ApiKey_description(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}

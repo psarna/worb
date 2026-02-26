@@ -3,8 +3,9 @@
 package graphql
 
 type APIKey struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	Description *string `json:"description,omitempty"`
 }
 
 type APIKeyConnection struct {
