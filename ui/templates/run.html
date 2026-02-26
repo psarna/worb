@@ -113,6 +113,7 @@ LIMIT 20</textarea>
     }
 
     function createChart(grid, key, points) {
+        const singleValue = points.length === 1;
         const div = document.createElement('div');
         div.className = 'chart-container';
         div.id = 'cc-' + key.replace(/[^a-zA-Z0-9]/g, '_');
@@ -121,7 +122,32 @@ LIMIT 20</textarea>
 
         const resetBtn = div.querySelector('.zoom-reset-btn');
 
-        const chart = new Chart(div.querySelector('canvas'), {
+        const chartConfig = singleValue ? {
+            type: 'bar',
+            data: {
+                labels: [key.split('/').pop().split('-').pop()],
+                datasets: [{
+                    label: key,
+                    data: [points[0].value],
+                    backgroundColor: 'rgba(88,166,255,0.6)',
+                    borderColor: '#58a6ff',
+                    borderWidth: 1,
+                    barPercentage: 0.4,
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y}` } },
+                },
+                scales: {
+                    x: { display: false },
+                    y: { beginAtZero: true, title: { display: true, text: key, color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                },
+                animation: false,
+            }
+        } : {
             type: 'line',
             data: {
                 labels: points.map(p => p.step),
@@ -162,7 +188,9 @@ LIMIT 20</textarea>
                 },
                 animation: false,
             }
-        });
+        };
+
+        const chart = new Chart(div.querySelector('canvas'), chartConfig);
 
         resetBtn.addEventListener('click', () => {
             resetAllZoom();
