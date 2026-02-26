@@ -14,7 +14,7 @@ Local, single-binary server compatible with the standard `wandb` Python client. 
 ## Usage
 
 ```bash
-./worb --port 8080 --data ~/.worb
+./worb
 ```
 
 ```python
@@ -52,7 +52,7 @@ docker run -v ~/.worb:/data -p 8080:8080 ghcr.io/psarna/worb --data /data
 ## Build
 
 ```bash
-go build -o worb .
+go build .
 ```
 
 ## Flags
