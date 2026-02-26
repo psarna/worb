@@ -2,6 +2,19 @@
 
 package graphql
 
+type APIKey struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+type APIKeyConnection struct {
+	Edges []*APIKeyEdge `json:"edges"`
+}
+
+type APIKeyEdge struct {
+	Node *APIKey `json:"node"`
+}
+
 type Artifact struct {
 	ID              string            `json:"id"`
 	State           *string           `json:"state,omitempty"`
@@ -250,12 +263,16 @@ type UpsertBucketPayload struct {
 }
 
 type User struct {
-	ID       string          `json:"id"`
-	Username string          `json:"username"`
-	Email    string          `json:"email"`
-	Entity   string          `json:"entity"`
-	Flags    *string         `json:"flags,omitempty"`
-	Teams    *TeamConnection `json:"teams,omitempty"`
+	ID        string            `json:"id"`
+	Name      *string           `json:"name,omitempty"`
+	Username  string            `json:"username"`
+	Email     string            `json:"email"`
+	Entity    string            `json:"entity"`
+	Admin     *bool             `json:"admin,omitempty"`
+	DeletedAt *string           `json:"deletedAt,omitempty"`
+	Flags     *string           `json:"flags,omitempty"`
+	Teams     *TeamConnection   `json:"teams,omitempty"`
+	APIKeys   *APIKeyConnection `json:"apiKeys,omitempty"`
 }
 
 type VersionInfo struct {

@@ -37,13 +37,30 @@ type Mutation {
 
 scalar JSONString
 
+type ApiKey {
+  id: String!
+  name: String!
+}
+
+type ApiKeyConnection {
+  edges: [ApiKeyEdge!]!
+}
+
+type ApiKeyEdge {
+  node: ApiKey!
+}
+
 type User {
   id: String!
+  name: String
   username: String!
   email: String!
   entity: String!
+  admin: Boolean
+  deletedAt: String
   flags: JSONString
   teams: TeamConnection
+  apiKeys: ApiKeyConnection
 }
 
 type TeamConnection {

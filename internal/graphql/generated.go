@@ -48,6 +48,19 @@ type DirectiveRoot struct {
 }
 
 type ComplexityRoot struct {
+	ApiKey struct {
+		ID   func(childComplexity int) int
+		Name func(childComplexity int) int
+	}
+
+	ApiKeyConnection struct {
+		Edges func(childComplexity int) int
+	}
+
+	ApiKeyEdge struct {
+		Node func(childComplexity int) int
+	}
+
 	Artifact struct {
 		CurrentManifest func(childComplexity int) int
 		ID              func(childComplexity int) int
@@ -224,12 +237,16 @@ type ComplexityRoot struct {
 	}
 
 	User struct {
-		Email    func(childComplexity int) int
-		Entity   func(childComplexity int) int
-		Flags    func(childComplexity int) int
-		ID       func(childComplexity int) int
-		Teams    func(childComplexity int) int
-		Username func(childComplexity int) int
+		APIKeys   func(childComplexity int) int
+		Admin     func(childComplexity int) int
+		DeletedAt func(childComplexity int) int
+		Email     func(childComplexity int) int
+		Entity    func(childComplexity int) int
+		Flags     func(childComplexity int) int
+		ID        func(childComplexity int) int
+		Name      func(childComplexity int) int
+		Teams     func(childComplexity int) int
+		Username  func(childComplexity int) int
 	}
 
 	VersionInfo struct {
@@ -281,6 +298,33 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 	ec := executionContext{nil, e, 0, 0, nil}
 	_ = ec
 	switch typeName + "." + field {
+
+	case "ApiKey.id":
+		if e.complexity.ApiKey.ID == nil {
+			break
+		}
+
+		return e.complexity.ApiKey.ID(childComplexity), true
+	case "ApiKey.name":
+		if e.complexity.ApiKey.Name == nil {
+			break
+		}
+
+		return e.complexity.ApiKey.Name(childComplexity), true
+
+	case "ApiKeyConnection.edges":
+		if e.complexity.ApiKeyConnection.Edges == nil {
+			break
+		}
+
+		return e.complexity.ApiKeyConnection.Edges(childComplexity), true
+
+	case "ApiKeyEdge.node":
+		if e.complexity.ApiKeyEdge.Node == nil {
+			break
+		}
+
+		return e.complexity.ApiKeyEdge.Node(childComplexity), true
 
 	case "Artifact.currentManifest":
 		if e.complexity.Artifact.CurrentManifest == nil {
@@ -938,6 +982,24 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 
 		return e.complexity.UpsertBucketPayload.Inserted(childComplexity), true
 
+	case "User.apiKeys":
+		if e.complexity.User.APIKeys == nil {
+			break
+		}
+
+		return e.complexity.User.APIKeys(childComplexity), true
+	case "User.admin":
+		if e.complexity.User.Admin == nil {
+			break
+		}
+
+		return e.complexity.User.Admin(childComplexity), true
+	case "User.deletedAt":
+		if e.complexity.User.DeletedAt == nil {
+			break
+		}
+
+		return e.complexity.User.DeletedAt(childComplexity), true
 	case "User.email":
 		if e.complexity.User.Email == nil {
 			break
@@ -962,6 +1024,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.User.ID(childComplexity), true
+	case "User.name":
+		if e.complexity.User.Name == nil {
+			break
+		}
+
+		return e.complexity.User.Name(childComplexity), true
 	case "User.teams":
 		if e.complexity.User.Teams == nil {
 			break
@@ -1446,6 +1514,132 @@ func (ec *executionContext) field___Type_fields_args(ctx context.Context, rawArg
 // endregion ************************** directives.gotpl **************************
 
 // region    **************************** field.gotpl *****************************
+
+func (ec *executionContext) _ApiKey_id(ctx context.Context, field graphql.CollectedField, obj *APIKey) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ApiKey_id,
+		func(ctx context.Context) (any, error) {
+			return obj.ID, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ApiKey_id(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ApiKey",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ApiKey_name(ctx context.Context, field graphql.CollectedField, obj *APIKey) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ApiKey_name,
+		func(ctx context.Context) (any, error) {
+			return obj.Name, nil
+		},
+		nil,
+		ec.marshalNString2string,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ApiKey_name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ApiKey",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ApiKeyConnection_edges(ctx context.Context, field graphql.CollectedField, obj *APIKeyConnection) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ApiKeyConnection_edges,
+		func(ctx context.Context) (any, error) {
+			return obj.Edges, nil
+		},
+		nil,
+		ec.marshalNApiKeyEdge2ᚕᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐAPIKeyEdgeᚄ,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ApiKeyConnection_edges(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ApiKeyConnection",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "node":
+				return ec.fieldContext_ApiKeyEdge_node(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type ApiKeyEdge", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _ApiKeyEdge_node(ctx context.Context, field graphql.CollectedField, obj *APIKeyEdge) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_ApiKeyEdge_node,
+		func(ctx context.Context) (any, error) {
+			return obj.Node, nil
+		},
+		nil,
+		ec.marshalNApiKey2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐAPIKey,
+		true,
+		true,
+	)
+}
+
+func (ec *executionContext) fieldContext_ApiKeyEdge_node(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "ApiKeyEdge",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "id":
+				return ec.fieldContext_ApiKey_id(ctx, field)
+			case "name":
+				return ec.fieldContext_ApiKey_name(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type ApiKey", field.Name)
+		},
+	}
+	return fc, nil
+}
 
 func (ec *executionContext) _Artifact_id(ctx context.Context, field graphql.CollectedField, obj *Artifact) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
@@ -3033,16 +3227,24 @@ func (ec *executionContext) fieldContext_Query_viewer(_ context.Context, field g
 			switch field.Name {
 			case "id":
 				return ec.fieldContext_User_id(ctx, field)
+			case "name":
+				return ec.fieldContext_User_name(ctx, field)
 			case "username":
 				return ec.fieldContext_User_username(ctx, field)
 			case "email":
 				return ec.fieldContext_User_email(ctx, field)
 			case "entity":
 				return ec.fieldContext_User_entity(ctx, field)
+			case "admin":
+				return ec.fieldContext_User_admin(ctx, field)
+			case "deletedAt":
+				return ec.fieldContext_User_deletedAt(ctx, field)
 			case "flags":
 				return ec.fieldContext_User_flags(ctx, field)
 			case "teams":
 				return ec.fieldContext_User_teams(ctx, field)
+			case "apiKeys":
+				return ec.fieldContext_User_apiKeys(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type User", field.Name)
 		},
@@ -4892,6 +5094,35 @@ func (ec *executionContext) fieldContext_User_id(_ context.Context, field graphq
 	return fc, nil
 }
 
+func (ec *executionContext) _User_name(ctx context.Context, field graphql.CollectedField, obj *User) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_User_name,
+		func(ctx context.Context) (any, error) {
+			return obj.Name, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_User_name(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "User",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _User_username(ctx context.Context, field graphql.CollectedField, obj *User) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -4979,6 +5210,64 @@ func (ec *executionContext) fieldContext_User_entity(_ context.Context, field gr
 	return fc, nil
 }
 
+func (ec *executionContext) _User_admin(ctx context.Context, field graphql.CollectedField, obj *User) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_User_admin,
+		func(ctx context.Context) (any, error) {
+			return obj.Admin, nil
+		},
+		nil,
+		ec.marshalOBoolean2ᚖbool,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_User_admin(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "User",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _User_deletedAt(ctx context.Context, field graphql.CollectedField, obj *User) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_User_deletedAt,
+		func(ctx context.Context) (any, error) {
+			return obj.DeletedAt, nil
+		},
+		nil,
+		ec.marshalOString2ᚖstring,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_User_deletedAt(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "User",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type String does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _User_flags(ctx context.Context, field graphql.CollectedField, obj *User) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -5036,6 +5325,39 @@ func (ec *executionContext) fieldContext_User_teams(_ context.Context, field gra
 				return ec.fieldContext_TeamConnection_edges(ctx, field)
 			}
 			return nil, fmt.Errorf("no field named %q was found under type TeamConnection", field.Name)
+		},
+	}
+	return fc, nil
+}
+
+func (ec *executionContext) _User_apiKeys(ctx context.Context, field graphql.CollectedField, obj *User) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_User_apiKeys,
+		func(ctx context.Context) (any, error) {
+			return obj.APIKeys, nil
+		},
+		nil,
+		ec.marshalOApiKeyConnection2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐAPIKeyConnection,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_User_apiKeys(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "User",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			switch field.Name {
+			case "edges":
+				return ec.fieldContext_ApiKeyConnection_edges(ctx, field)
+			}
+			return nil, fmt.Errorf("no field named %q was found under type ApiKeyConnection", field.Name)
 		},
 	}
 	return fc, nil
@@ -7155,6 +7477,128 @@ func (ec *executionContext) unmarshalInputUpsertBucketInput(ctx context.Context,
 
 // region    **************************** object.gotpl ****************************
 
+var apiKeyImplementors = []string{"ApiKey"}
+
+func (ec *executionContext) _ApiKey(ctx context.Context, sel ast.SelectionSet, obj *APIKey) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, apiKeyImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ApiKey")
+		case "id":
+			out.Values[i] = ec._ApiKey_id(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		case "name":
+			out.Values[i] = ec._ApiKey_name(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var apiKeyConnectionImplementors = []string{"ApiKeyConnection"}
+
+func (ec *executionContext) _ApiKeyConnection(ctx context.Context, sel ast.SelectionSet, obj *APIKeyConnection) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, apiKeyConnectionImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ApiKeyConnection")
+		case "edges":
+			out.Values[i] = ec._ApiKeyConnection_edges(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
+var apiKeyEdgeImplementors = []string{"ApiKeyEdge"}
+
+func (ec *executionContext) _ApiKeyEdge(ctx context.Context, sel ast.SelectionSet, obj *APIKeyEdge) graphql.Marshaler {
+	fields := graphql.CollectFields(ec.OperationContext, sel, apiKeyEdgeImplementors)
+
+	out := graphql.NewFieldSet(fields)
+	deferred := make(map[string]*graphql.FieldSet)
+	for i, field := range fields {
+		switch field.Name {
+		case "__typename":
+			out.Values[i] = graphql.MarshalString("ApiKeyEdge")
+		case "node":
+			out.Values[i] = ec._ApiKeyEdge_node(ctx, field, obj)
+			if out.Values[i] == graphql.Null {
+				out.Invalids++
+			}
+		default:
+			panic("unknown field " + strconv.Quote(field.Name))
+		}
+	}
+	out.Dispatch(ctx)
+	if out.Invalids > 0 {
+		return graphql.Null
+	}
+
+	atomic.AddInt32(&ec.deferred, int32(len(deferred)))
+
+	for label, dfs := range deferred {
+		ec.processDeferredGroup(graphql.DeferredGroup{
+			Label:    label,
+			Path:     graphql.GetPath(ctx),
+			FieldSet: dfs,
+			Context:  ctx,
+		})
+	}
+
+	return out
+}
+
 var artifactImplementors = []string{"Artifact"}
 
 func (ec *executionContext) _Artifact(ctx context.Context, sel ast.SelectionSet, obj *Artifact) graphql.Marshaler {
@@ -8603,6 +9047,8 @@ func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "name":
+			out.Values[i] = ec._User_name(ctx, field, obj)
 		case "username":
 			out.Values[i] = ec._User_username(ctx, field, obj)
 			if out.Values[i] == graphql.Null {
@@ -8618,10 +9064,16 @@ func (ec *executionContext) _User(ctx context.Context, sel ast.SelectionSet, obj
 			if out.Values[i] == graphql.Null {
 				out.Invalids++
 			}
+		case "admin":
+			out.Values[i] = ec._User_admin(ctx, field, obj)
+		case "deletedAt":
+			out.Values[i] = ec._User_deletedAt(ctx, field, obj)
 		case "flags":
 			out.Values[i] = ec._User_flags(ctx, field, obj)
 		case "teams":
 			out.Values[i] = ec._User_teams(ctx, field, obj)
+		case "apiKeys":
+			out.Values[i] = ec._User_apiKeys(ctx, field, obj)
 		default:
 			panic("unknown field " + strconv.Quote(field.Name))
 		}
@@ -9019,6 +9471,70 @@ func (ec *executionContext) ___Type(ctx context.Context, sel ast.SelectionSet, o
 // endregion **************************** object.gotpl ****************************
 
 // region    ***************************** type.gotpl *****************************
+
+func (ec *executionContext) marshalNApiKey2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐAPIKey(ctx context.Context, sel ast.SelectionSet, v *APIKey) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._ApiKey(ctx, sel, v)
+}
+
+func (ec *executionContext) marshalNApiKeyEdge2ᚕᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐAPIKeyEdgeᚄ(ctx context.Context, sel ast.SelectionSet, v []*APIKeyEdge) graphql.Marshaler {
+	ret := make(graphql.Array, len(v))
+	var wg sync.WaitGroup
+	isLen1 := len(v) == 1
+	if !isLen1 {
+		wg.Add(len(v))
+	}
+	for i := range v {
+		i := i
+		fc := &graphql.FieldContext{
+			Index:  &i,
+			Result: &v[i],
+		}
+		ctx := graphql.WithFieldContext(ctx, fc)
+		f := func(i int) {
+			defer func() {
+				if r := recover(); r != nil {
+					ec.Error(ctx, ec.Recover(ctx, r))
+					ret = nil
+				}
+			}()
+			if !isLen1 {
+				defer wg.Done()
+			}
+			ret[i] = ec.marshalNApiKeyEdge2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐAPIKeyEdge(ctx, sel, v[i])
+		}
+		if isLen1 {
+			f(i)
+		} else {
+			go f(i)
+		}
+
+	}
+	wg.Wait()
+
+	for _, e := range ret {
+		if e == graphql.Null {
+			return graphql.Null
+		}
+	}
+
+	return ret
+}
+
+func (ec *executionContext) marshalNApiKeyEdge2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐAPIKeyEdge(ctx context.Context, sel ast.SelectionSet, v *APIKeyEdge) graphql.Marshaler {
+	if v == nil {
+		if !graphql.HasFieldError(ctx, graphql.GetFieldContext(ctx)) {
+			graphql.AddErrorf(ctx, "the requested element is null which the schema does not allow")
+		}
+		return graphql.Null
+	}
+	return ec._ApiKeyEdge(ctx, sel, v)
+}
 
 func (ec *executionContext) unmarshalNArtifactAliasInput2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐArtifactAliasInput(ctx context.Context, v any) (*ArtifactAliasInput, error) {
 	res, err := ec.unmarshalInputArtifactAliasInput(ctx, v)
@@ -9605,6 +10121,13 @@ func (ec *executionContext) marshalN__TypeKind2string(ctx context.Context, sel a
 		}
 	}
 	return res
+}
+
+func (ec *executionContext) marshalOApiKeyConnection2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐAPIKeyConnection(ctx context.Context, sel ast.SelectionSet, v *APIKeyConnection) graphql.Marshaler {
+	if v == nil {
+		return graphql.Null
+	}
+	return ec._ApiKeyConnection(ctx, sel, v)
 }
 
 func (ec *executionContext) marshalOArtifact2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐArtifact(ctx context.Context, sel ast.SelectionSet, v *Artifact) graphql.Marshaler {
