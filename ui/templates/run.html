@@ -257,10 +257,17 @@ LIMIT 20</textarea>
                 renderPending = false;
                 for (const key of Object.keys(metrics)) {
                     const points = dedupeSorted(metrics[key]);
+                    const needsBar = points.length === 1;
                     if (allCharts[key]) {
-                        allCharts[key].data.labels = points.map(p => p.step);
-                        allCharts[key].data.datasets[0].data = points.map(p => p.value);
-                        allCharts[key].update('none');
+                        const isBar = allCharts[key].config.type === 'bar';
+                        if (isBar && !needsBar) {
+                            allCharts[key].destroy();
+                            allCharts[key] = createChart(grid, key, points);
+                        } else {
+                            allCharts[key].data.labels = needsBar ? [key.split('/').pop().split('-').pop()] : points.map(p => p.step);
+                            allCharts[key].data.datasets[0].data = points.map(p => p.value);
+                            allCharts[key].update('none');
+                        }
                     } else {
                         allCharts[key] = createChart(grid, key, points);
                     }
