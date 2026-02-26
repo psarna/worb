@@ -1,12 +1,14 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"path/filepath"
 
+	gqlgraphql "github.com/99designs/gqlgen/graphql"
 	"github.com/99designs/gqlgen/graphql/handler"
 	"github.com/99designs/gqlgen/graphql/playground"
 	"github.com/go-chi/chi/v5"
@@ -17,6 +19,7 @@ import (
 	"github.com/sarna/worb/internal/graphql"
 	"github.com/sarna/worb/internal/store"
 	"github.com/sarna/worb/ui"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
 type Config struct {
@@ -64,6 +67,11 @@ func (s *Server) setupRoutes() {
 		Store: s.store,
 	}
 	gqlSrv := handler.NewDefaultServer(graphql.NewExecutableSchema(graphql.Config{Resolvers: gqlResolver}))
+	gqlSrv.SetErrorPresenter(func(ctx context.Context, err error) *gqlerror.Error {
+		gqlErr := gqlgraphql.DefaultErrorPresenter(ctx, err)
+		log.Printf("GraphQL error: %s (path: %v, extensions: %v)", gqlErr.Message, gqlErr.Path, gqlErr.Extensions)
+		return gqlErr
+	})
 
 	r.Handle("/graphql", graphql.BaseURLMiddleware(gqlSrv))
 	r.Handle("/playground", playground.Handler("worb", "/graphql"))
