@@ -91,24 +91,26 @@ LIMIT 20</textarea>
     });
 
     const allCharts = {};
+    const everyChart = new Set();
     let syncing = false;
 
     function syncZoom(source, min, max) {
         if (syncing) return;
         syncing = true;
-        for (const c of Object.values(allCharts)) {
-            const btn = c.canvas.closest('.chart-container').querySelector('.zoom-reset-btn');
-            btn.style.display = 'inline-block';
+        for (const c of everyChart) {
+            const btn = c.canvas.closest('.chart-container')?.querySelector('.zoom-reset-btn');
+            if (btn) btn.style.display = 'inline-block';
             if (c === source) continue;
-            c.zoomScale('x', {min, max}, 'none');
+            if (c.resetZoom) c.zoomScale('x', {min, max}, 'none');
         }
         syncing = false;
     }
 
     function resetAllZoom() {
-        for (const c of Object.values(allCharts)) {
-            c.resetZoom();
-            c.canvas.closest('.chart-container').querySelector('.zoom-reset-btn').style.display = 'none';
+        for (const c of everyChart) {
+            if (c.resetZoom) c.resetZoom();
+            const btn = c.canvas.closest('.chart-container')?.querySelector('.zoom-reset-btn');
+            if (btn) btn.style.display = 'none';
         }
     }
 
@@ -118,27 +120,84 @@ LIMIT 20</textarea>
         if (expandedOverlay) return;
         const src = allCharts[key];
         if (!src) return;
-        const srcContainer = src.canvas.closest('.chart-container');
 
         const overlay = document.createElement('div');
         overlay.className = 'chart-overlay';
 
-        const clone = srcContainer.cloneNode(true);
-        clone.style.cursor = 'default';
-        overlay.appendChild(clone);
+        const container = document.createElement('div');
+        container.className = 'chart-container';
+        container.innerHTML = `<div class="chart-header"><div class="chart-title">${key}</div><button class="zoom-reset-btn" style="display:none;" title="Reset zoom">Reset</button></div><canvas></canvas>`;
+        overlay.appendChild(container);
         document.body.appendChild(overlay);
         expandedOverlay = overlay;
 
-        const canvas = clone.querySelector('canvas');
-        const srcConfig = src.config;
-        const expandedChart = new Chart(canvas, {
-            type: srcConfig.type,
-            data: JSON.parse(JSON.stringify(src.data)),
-            options: JSON.parse(JSON.stringify(src.options)),
+        const isBar = src.config.type === 'bar';
+        const data = JSON.parse(JSON.stringify(src.data));
+        const resetBtn = container.querySelector('.zoom-reset-btn');
+
+        const expandedChart = new Chart(container.querySelector('canvas'), isBar ? {
+            type: 'bar',
+            data: data,
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.y}` } },
+                },
+                scales: {
+                    x: { display: false },
+                    y: { beginAtZero: true, title: { display: true, text: key, color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                },
+                animation: false,
+            }
+        } : {
+            type: 'line',
+            data: data,
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { display: false },
+                    zoom: {
+                        zoom: {
+                            drag: {
+                                enabled: true,
+                                backgroundColor: 'rgba(88,166,255,0.15)',
+                                borderColor: '#58a6ff',
+                                borderWidth: 1,
+                            },
+                            mode: 'x',
+                            onZoomComplete: () => { resetBtn.style.display = 'inline-block'; },
+                        },
+                    },
+                },
+                scales: {
+                    x: { title: { display: true, text: 'step', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                    y: { title: { display: true, text: key, color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                },
+                animation: false,
+            }
+        });
+
+        everyChart.add(expandedChart);
+
+        if (!isBar && src.scales && src.scales.x) {
+            const srcX = src.scales.x;
+            const fullMin = src.data.labels[0];
+            const fullMax = src.data.labels[src.data.labels.length - 1];
+            if (srcX.min !== fullMin || srcX.max !== fullMax) {
+                expandedChart.zoomScale('x', { min: srcX.min, max: srcX.max }, 'none');
+                resetBtn.style.display = 'inline-block';
+            }
+        }
+
+        resetBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            resetAllZoom();
         });
 
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) {
+                everyChart.delete(expandedChart);
                 expandedChart.destroy();
                 overlay.remove();
                 expandedOverlay = null;
@@ -225,6 +284,7 @@ LIMIT 20</textarea>
         };
 
         const chart = new Chart(div.querySelector('canvas'), chartConfig);
+        everyChart.add(chart);
 
         resetBtn.addEventListener('click', (e) => {
             e.stopPropagation();
@@ -306,6 +366,7 @@ LIMIT 20</textarea>
                     if (allCharts[key]) {
                         const isBar = allCharts[key].config.type === 'bar';
                         if (isBar && !needsBar) {
+                            everyChart.delete(allCharts[key]);
                             allCharts[key].destroy();
                             allCharts[key] = createChart(grid, key, points);
                         } else {
