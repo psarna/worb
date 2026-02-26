@@ -43,6 +43,12 @@ WANDB_BASE_URL=http://localhost:8080 python examples/histogram.py
 WANDB_BASE_URL=http://localhost:8080 python examples/out_of_order.py
 ```
 
+## Docker
+
+```bash
+docker run -v ~/.worb:/data -p 8080:8080 ghcr.io/psarna/worb --data /data
+```
+
 ## Build
 
 ```bash
