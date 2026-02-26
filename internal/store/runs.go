@@ -285,11 +285,18 @@ func (db *DB) ListRunsFiltered(projectID string, displayName string) ([]*Run, er
 	return runs, nil
 }
 
+func (db *DB) ListAllProjects() ([]*Project, error) {
+	return db.ListProjects("")
+}
+
 func (db *DB) ListProjects(entity string) ([]*Project, error) {
+	var rows *sql.Rows
+	var err error
 	if entity == "" {
-		entity = "local"
+		rows, err = db.Query("SELECT id, entity, name, created_at FROM projects ORDER BY created_at DESC")
+	} else {
+		rows, err = db.Query("SELECT id, entity, name, created_at FROM projects WHERE entity = ? ORDER BY created_at DESC", entity)
 	}
-	rows, err := db.Query("SELECT id, entity, name, created_at FROM projects WHERE entity = ? ORDER BY created_at DESC", entity)
 	if err != nil {
 		return nil, err
 	}
