@@ -99,7 +99,12 @@ func (db *DB) StreamHistoryScalars(runID string, emit func(ScalarPoint) error) e
 		}
 
 		xVal := float64(step)
-		if raw, ok := obj["step"]; ok {
+		if raw, ok := obj["_step"]; ok {
+			var v float64
+			if json.Unmarshal(raw, &v) == nil {
+				xVal = v
+			}
+		} else if raw, ok := obj["step"]; ok {
 			var v float64
 			if json.Unmarshal(raw, &v) == nil {
 				xVal = v
