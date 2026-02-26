@@ -112,6 +112,40 @@ LIMIT 20</textarea>
         }
     }
 
+    let expandedOverlay = null;
+
+    function expandChart(key) {
+        if (expandedOverlay) return;
+        const src = allCharts[key];
+        if (!src) return;
+        const srcContainer = src.canvas.closest('.chart-container');
+
+        const overlay = document.createElement('div');
+        overlay.className = 'chart-overlay';
+
+        const clone = srcContainer.cloneNode(true);
+        clone.style.cursor = 'default';
+        overlay.appendChild(clone);
+        document.body.appendChild(overlay);
+        expandedOverlay = overlay;
+
+        const canvas = clone.querySelector('canvas');
+        const srcConfig = src.config;
+        const expandedChart = new Chart(canvas, {
+            type: srcConfig.type,
+            data: JSON.parse(JSON.stringify(src.data)),
+            options: JSON.parse(JSON.stringify(src.options)),
+        });
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                expandedChart.destroy();
+                overlay.remove();
+                expandedOverlay = null;
+            }
+        });
+    }
+
     function createChart(grid, key, points) {
         const singleValue = points.length === 1;
         const div = document.createElement('div');
@@ -192,9 +226,12 @@ LIMIT 20</textarea>
 
         const chart = new Chart(div.querySelector('canvas'), chartConfig);
 
-        resetBtn.addEventListener('click', () => {
+        resetBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
             resetAllZoom();
         });
+
+        div.addEventListener('click', () => expandChart(key));
 
         return chart;
     }
@@ -285,18 +322,7 @@ LIMIT 20</textarea>
         }
 
         const cached = getCachedHistory(runID);
-        const cacheValid = cached && cached.lineCount === runHistoryLineCount && runState !== 'running';
-
-        if (cacheValid) {
-            parseNdjson(cached.data);
-            scheduleRender();
-            if (Object.keys(metrics).length === 0) {
-                document.getElementById('no-charts').style.display = 'block';
-            }
-            return;
-        }
-
-        if (cached && runState === 'running') {
+        if (cached) {
             parseNdjson(cached.data);
             scheduleRender();
         }
@@ -307,9 +333,7 @@ LIMIT 20</textarea>
         let buffer = '';
         let fullText = '';
 
-        if (cached && runState === 'running') {
-            for (const k of Object.keys(metrics)) metrics[k] = [];
-        }
+        for (const k of Object.keys(metrics)) metrics[k] = [];
 
         while (true) {
             const { done, value } = await reader.read();
