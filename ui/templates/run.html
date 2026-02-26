@@ -62,14 +62,9 @@
         <div id="console" class="tab-content">
             <div class="console-container">
                 <div class="console-editor">
-                    <textarea id="sql-input" spellcheck="false">SELECT
-  r.name,
-  r.display_name,
-  r.state,
-  r.history_line_count,
-  r.created_at
-FROM runs r
-ORDER BY r.created_at DESC
+                    <textarea id="sql-input" spellcheck="false">SELECT display_name, state, history_line_count, created_at
+FROM runs
+ORDER BY created_at DESC
 LIMIT 20</textarea>
                     <div class="console-actions">
                         <button id="run-query-btn" onclick="runQuery()">Run Query</button>
