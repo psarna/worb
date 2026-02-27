@@ -161,7 +161,7 @@ type ComplexityRoot struct {
 	Query struct {
 		Entity     func(childComplexity int, name *string) int
 		Model      func(childComplexity int, name *string, entityName *string) int
-		Project    func(childComplexity int, name string, entityName *string) int
+		Project    func(childComplexity int, name *string, entityName *string) int
 		ServerInfo func(childComplexity int) int
 		Viewer     func(childComplexity int) int
 	}
@@ -189,6 +189,7 @@ type ComplexityRoot struct {
 		Project          func(childComplexity int) int
 		ReadOnly         func(childComplexity int) int
 		State            func(childComplexity int) int
+		Stopped          func(childComplexity int) int
 		SummaryMetrics   func(childComplexity int) int
 		SweepName        func(childComplexity int) int
 		SystemMetrics    func(childComplexity int) int
@@ -273,7 +274,7 @@ type ProjectResolver interface {
 }
 type QueryResolver interface {
 	Viewer(ctx context.Context) (*User, error)
-	Project(ctx context.Context, name string, entityName *string) (*Project, error)
+	Project(ctx context.Context, name *string, entityName *string) (*Project, error)
 	Model(ctx context.Context, name *string, entityName *string) (*Project, error)
 	Entity(ctx context.Context, name *string) (*Entity, error)
 	ServerInfo(ctx context.Context) (*ServerInfo, error)
@@ -703,7 +704,7 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 			return 0, false
 		}
 
-		return e.complexity.Query.Project(childComplexity, args["name"].(string), args["entityName"].(*string)), true
+		return e.complexity.Query.Project(childComplexity, args["name"].(*string), args["entityName"].(*string)), true
 	case "Query.serverInfo":
 		if e.complexity.Query.ServerInfo == nil {
 			break
@@ -849,6 +850,12 @@ func (e *executableSchema) Complexity(ctx context.Context, typeName, field strin
 		}
 
 		return e.complexity.Run.State(childComplexity), true
+	case "Run.stopped":
+		if e.complexity.Run.Stopped == nil {
+			break
+		}
+
+		return e.complexity.Run.Stopped(childComplexity), true
 	case "Run.summaryMetrics":
 		if e.complexity.Run.SummaryMetrics == nil {
 			break
@@ -1463,7 +1470,7 @@ func (ec *executionContext) field_Query_model_args(ctx context.Context, rawArgs 
 func (ec *executionContext) field_Query_project_args(ctx context.Context, rawArgs map[string]any) (map[string]any, error) {
 	var err error
 	args := map[string]any{}
-	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "name", ec.unmarshalNString2string)
+	arg0, err := graphql.ProcessArgField(ctx, rawArgs, "name", ec.unmarshalOString2ᚖstring)
 	if err != nil {
 		return nil, err
 	}
@@ -3228,6 +3235,8 @@ func (ec *executionContext) fieldContext_Project_run(ctx context.Context, field 
 				return ec.fieldContext_Run_eventsTail(ctx, field)
 			case "readOnly":
 				return ec.fieldContext_Run_readOnly(ctx, field)
+			case "stopped":
+				return ec.fieldContext_Run_stopped(ctx, field)
 			case "systemMetrics":
 				return ec.fieldContext_Run_systemMetrics(ctx, field)
 			case "historyKeys":
@@ -3329,6 +3338,8 @@ func (ec *executionContext) fieldContext_Project_bucket(ctx context.Context, fie
 				return ec.fieldContext_Run_eventsTail(ctx, field)
 			case "readOnly":
 				return ec.fieldContext_Run_readOnly(ctx, field)
+			case "stopped":
+				return ec.fieldContext_Run_stopped(ctx, field)
 			case "systemMetrics":
 				return ec.fieldContext_Run_systemMetrics(ctx, field)
 			case "historyKeys":
@@ -3414,7 +3425,7 @@ func (ec *executionContext) _Query_project(ctx context.Context, field graphql.Co
 		ec.fieldContext_Query_project,
 		func(ctx context.Context) (any, error) {
 			fc := graphql.GetFieldContext(ctx)
-			return ec.resolvers.Query().Project(ctx, fc.Args["name"].(string), fc.Args["entityName"].(*string))
+			return ec.resolvers.Query().Project(ctx, fc.Args["name"].(*string), fc.Args["entityName"].(*string))
 		},
 		nil,
 		ec.marshalOProject2ᚖgithubᚗcomᚋsarnaᚋworbᚋinternalᚋgraphqlᚐProject,
@@ -4469,6 +4480,35 @@ func (ec *executionContext) fieldContext_Run_readOnly(_ context.Context, field g
 	return fc, nil
 }
 
+func (ec *executionContext) _Run_stopped(ctx context.Context, field graphql.CollectedField, obj *Run) (ret graphql.Marshaler) {
+	return graphql.ResolveField(
+		ctx,
+		ec.OperationContext,
+		field,
+		ec.fieldContext_Run_stopped,
+		func(ctx context.Context) (any, error) {
+			return obj.Stopped, nil
+		},
+		nil,
+		ec.marshalOBoolean2ᚖbool,
+		true,
+		false,
+	)
+}
+
+func (ec *executionContext) fieldContext_Run_stopped(_ context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Run",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Run_systemMetrics(ctx context.Context, field graphql.CollectedField, obj *Run) (ret graphql.Marshaler) {
 	return graphql.ResolveField(
 		ctx,
@@ -4747,6 +4787,8 @@ func (ec *executionContext) fieldContext_RunEdge_node(_ context.Context, field g
 				return ec.fieldContext_Run_eventsTail(ctx, field)
 			case "readOnly":
 				return ec.fieldContext_Run_readOnly(ctx, field)
+			case "stopped":
+				return ec.fieldContext_Run_stopped(ctx, field)
 			case "systemMetrics":
 				return ec.fieldContext_Run_systemMetrics(ctx, field)
 			case "historyKeys":
@@ -5148,6 +5190,8 @@ func (ec *executionContext) fieldContext_UpsertBucketPayload_bucket(_ context.Co
 				return ec.fieldContext_Run_eventsTail(ctx, field)
 			case "readOnly":
 				return ec.fieldContext_Run_readOnly(ctx, field)
+			case "stopped":
+				return ec.fieldContext_Run_stopped(ctx, field)
 			case "systemMetrics":
 				return ec.fieldContext_Run_systemMetrics(ctx, field)
 			case "historyKeys":
@@ -7169,7 +7213,7 @@ func (ec *executionContext) unmarshalInputCreateArtifactFilesInput(ctx context.C
 			it.EntityName = data
 		case "projectName":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("projectName"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -7217,7 +7261,7 @@ func (ec *executionContext) unmarshalInputCreateArtifactInput(ctx context.Contex
 			it.EntityName = data
 		case "projectName":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("projectName"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -7321,7 +7365,7 @@ func (ec *executionContext) unmarshalInputCreateArtifactManifestInput(ctx contex
 			it.EntityName = data
 		case "projectName":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("projectName"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -7390,7 +7434,7 @@ func (ec *executionContext) unmarshalInputCreateRunFilesInput(ctx context.Contex
 			it.EntityName = data
 		case "projectName":
 			ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("projectName"))
-			data, err := ec.unmarshalNString2string(ctx, v)
+			data, err := ec.unmarshalOString2ᚖstring(ctx, v)
 			if err != nil {
 				return it, err
 			}
@@ -8806,6 +8850,8 @@ func (ec *executionContext) _Run(ctx context.Context, sel ast.SelectionSet, obj 
 			out.Values[i] = ec._Run_eventsTail(ctx, field, obj)
 		case "readOnly":
 			out.Values[i] = ec._Run_readOnly(ctx, field, obj)
+		case "stopped":
+			out.Values[i] = ec._Run_stopped(ctx, field, obj)
 		case "systemMetrics":
 			out.Values[i] = ec._Run_systemMetrics(ctx, field, obj)
 		case "historyKeys":

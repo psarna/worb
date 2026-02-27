@@ -164,7 +164,11 @@ func (r *mutationResolver) UpsertBucket(ctx context.Context, input *UpsertBucket
 
 // CreateArtifact is the resolver for the createArtifact field.
 func (r *mutationResolver) CreateArtifact(ctx context.Context, input CreateArtifactInput) (*CreateArtifactPayload, error) {
-	proj, err := r.Store.EnsureProject(input.EntityName, input.ProjectName)
+	projectName := "default"
+	if input.ProjectName != nil {
+		projectName = *input.ProjectName
+	}
+	proj, err := r.Store.EnsureProject(input.EntityName, projectName)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +256,11 @@ func (r *mutationResolver) CreateArtifactFiles(ctx context.Context, input Create
 
 // CreateRunFiles is the resolver for the createRunFiles field.
 func (r *mutationResolver) CreateRunFiles(ctx context.Context, input CreateRunFilesInput) (*CreateRunFilesPayload, error) {
-	proj, err := r.Store.EnsureProject(input.EntityName, input.ProjectName)
+	projectName := "default"
+	if input.ProjectName != nil {
+		projectName = *input.ProjectName
+	}
+	proj, err := r.Store.EnsureProject(input.EntityName, projectName)
 	if err != nil {
 		return nil, err
 	}
@@ -373,13 +381,17 @@ func (r *queryResolver) Viewer(ctx context.Context) (*User, error) {
 }
 
 // Project is the resolver for the project field.
-func (r *queryResolver) Project(ctx context.Context, name string, entityName *string) (*Project, error) {
+func (r *queryResolver) Project(ctx context.Context, name *string, entityName *string) (*Project, error) {
+	projectName := "default"
+	if name != nil {
+		projectName = *name
+	}
 	entity := "local"
 	if entityName != nil {
 		entity = *entityName
 	}
 
-	proj, err := r.Store.EnsureProject(entity, name)
+	proj, err := r.Store.EnsureProject(entity, projectName)
 	if err != nil {
 		return nil, err
 	}

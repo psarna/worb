@@ -1,6 +1,6 @@
 type Query {
   viewer: User
-  project(name: String!, entityName: String): Project
+  project(name: String, entityName: String): Project
   model(name: String, entityName: String): Project
   entity(name: String): Entity
   serverInfo: ServerInfo
@@ -196,6 +196,7 @@ type Run {
   historyTail: String
   eventsTail: String
   readOnly: Boolean
+  stopped: Boolean
   systemMetrics: String
   historyKeys: JSONString
   user: RunUser
@@ -204,7 +205,7 @@ type Run {
 
 input CreateArtifactInput {
   entityName: String!
-  projectName: String!
+  projectName: String
   runName: String!
   artifactTypeName: String!
   artifactCollectionName: String!
@@ -253,7 +254,7 @@ input CreateArtifactManifestInput {
   artifactID: String!
   baseArtifactID: String
   entityName: String!
-  projectName: String!
+  projectName: String
   runName: String!
   name: String!
   digest: String!
@@ -268,7 +269,7 @@ input CreateArtifactFilesInput {
   artifactID: String!
   artifactManifestID: String!
   entityName: String!
-  projectName: String!
+  projectName: String
   runName: String!
   files: [CreateArtifactFileInput!]!
 }
@@ -301,7 +302,7 @@ type FileUploadInfo {
 input CreateRunFilesInput {
   runName: String!
   entityName: String!
-  projectName: String!
+  projectName: String
   files: [String!]!
 }
 

@@ -51,7 +51,7 @@ type CreateArtifactFilesInput struct {
 	ArtifactID         string                     `json:"artifactID"`
 	ArtifactManifestID string                     `json:"artifactManifestID"`
 	EntityName         string                     `json:"entityName"`
-	ProjectName        string                     `json:"projectName"`
+	ProjectName        *string                    `json:"projectName,omitempty"`
 	RunName            string                     `json:"runName"`
 	Files              []*CreateArtifactFileInput `json:"files"`
 }
@@ -62,7 +62,7 @@ type CreateArtifactFilesPayload struct {
 
 type CreateArtifactInput struct {
 	EntityName             string                `json:"entityName"`
-	ProjectName            string                `json:"projectName"`
+	ProjectName            *string               `json:"projectName,omitempty"`
 	RunName                string                `json:"runName"`
 	ArtifactTypeName       string                `json:"artifactTypeName"`
 	ArtifactCollectionName string                `json:"artifactCollectionName"`
@@ -77,7 +77,7 @@ type CreateArtifactManifestInput struct {
 	ArtifactID     string  `json:"artifactID"`
 	BaseArtifactID *string `json:"baseArtifactID,omitempty"`
 	EntityName     string  `json:"entityName"`
-	ProjectName    string  `json:"projectName"`
+	ProjectName    *string `json:"projectName,omitempty"`
 	RunName        string  `json:"runName"`
 	Name           string  `json:"name"`
 	Digest         string  `json:"digest"`
@@ -95,7 +95,7 @@ type CreateArtifactPayload struct {
 type CreateRunFilesInput struct {
 	RunName     string   `json:"runName"`
 	EntityName  string   `json:"entityName"`
-	ProjectName string   `json:"projectName"`
+	ProjectName *string  `json:"projectName,omitempty"`
 	Files       []string `json:"files"`
 }
 
@@ -191,6 +191,7 @@ type Run struct {
 	HistoryTail      *string  `json:"historyTail,omitempty"`
 	EventsTail       *string  `json:"eventsTail,omitempty"`
 	ReadOnly         *bool    `json:"readOnly,omitempty"`
+	Stopped          *bool    `json:"stopped,omitempty"`
 	SystemMetrics    *string  `json:"systemMetrics,omitempty"`
 	HistoryKeys      *string  `json:"historyKeys,omitempty"`
 	User             *RunUser `json:"user,omitempty"`
