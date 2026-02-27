@@ -276,6 +276,20 @@ table tr:hover { background: rgba(255,255,255,0.02); }
 #run-query-btn:hover { opacity: 0.9; }
 #run-query-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.wrap-toggle {
+    background: var(--surface);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    margin-left: auto;
+}
+.wrap-toggle:hover { border-color: var(--text-secondary); }
+.wrap-toggle.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
 .query-status { font-size: 13px; color: var(--text-secondary); }
 .query-status.success { color: var(--green); }
 .query-status.error { color: var(--red); }
@@ -322,6 +336,12 @@ table tr:hover { background: rgba(255,255,255,0.02); }
     max-width: 400px;
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.query-results.wrapped .query-table td {
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-width: none;
 }
 
 .null-val { color: var(--text-secondary); font-style: italic; }

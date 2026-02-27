@@ -69,6 +69,7 @@ ORDER BY step LIMIT 20</textarea>
                     <div class="console-actions">
                         <button id="run-query-btn" onclick="runQuery()">Run Query</button>
                         <span id="query-status" class="query-status"></span>
+                        <button id="wrap-toggle-btn" class="wrap-toggle" onclick="toggleWrap()">wrap text</button>
                     </div>
                 </div>
                 <div id="query-results" class="query-results"></div>
@@ -508,6 +509,13 @@ ORDER BY step LIMIT 20</textarea>
             return;
         }
         container.textContent = logs.join('\n');
+    }
+
+    function toggleWrap() {
+        const wrap = document.getElementById('query-results');
+        const btn = document.getElementById('wrap-toggle-btn');
+        wrap.classList.toggle('wrapped');
+        btn.classList.toggle('active');
     }
 
     async function runQuery() {
