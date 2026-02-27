@@ -391,8 +391,10 @@ LIMIT 20</textarea>
                     if (allCharts[key]) {
                         const isBar = allCharts[key].config.type === 'bar';
                         if (isBar && !needsBar) {
+                            const oldDiv = allCharts[key].canvas.closest('.chart-container');
                             everyChart.delete(allCharts[key]);
                             allCharts[key].destroy();
+                            if (oldDiv) oldDiv.remove();
                             allCharts[key] = createChart(grid, key, points);
                         } else {
                             allCharts[key].data.labels = needsBar ? [key.split('/').pop().split('-').pop()] : points.map(p => p.step);
@@ -416,10 +418,8 @@ LIMIT 20</textarea>
         }
 
         const cached = getCachedHistory(runID);
-        let cachedLineCount = 0;
         if (cached) {
             parseNdjson(cached.data);
-            cachedLineCount = cached.data.split('\n').filter(l => l).length;
             scheduleRender();
         }
 
@@ -428,9 +428,6 @@ LIMIT 20</textarea>
         const decoder = new TextDecoder();
         let buffer = '';
         let fullText = '';
-        let freshLineCount = 0;
-        let hasNewData = false;
-
         while (true) {
             const { done, value } = await reader.read();
             if (done) break;
@@ -441,31 +438,20 @@ LIMIT 20</textarea>
             buffer = lines.pop();
             for (const line of lines) {
                 if (!line) continue;
-                freshLineCount++;
-                if (freshLineCount <= cachedLineCount) continue;
-                hasNewData = true;
                 const p = JSON.parse(line);
                 if (!metrics[p.k]) metrics[p.k] = [];
                 metrics[p.k].push({ step: p.s, value: p.v });
             }
-            if (hasNewData) scheduleRender();
+            scheduleRender();
         }
         if (buffer.trim()) {
             fullText += '\n';
-            freshLineCount++;
-            if (freshLineCount > cachedLineCount) {
-                hasNewData = true;
-                const p = JSON.parse(buffer);
-                if (!metrics[p.k]) metrics[p.k] = [];
-                metrics[p.k].push({ step: p.s, value: p.v });
-            }
-        }
-        if (hasNewData) {
+            const p = JSON.parse(buffer);
+            if (!metrics[p.k]) metrics[p.k] = [];
+            metrics[p.k].push({ step: p.s, value: p.v });
             scheduleRender();
-            setCachedHistory(runID, runHistoryLineCount, fullText);
-        } else if (!cached) {
-            setCachedHistory(runID, runHistoryLineCount, fullText);
         }
+        setCachedHistory(runID, runHistoryLineCount, fullText);
 
         if (Object.keys(metrics).length === 0) {
             document.getElementById('no-charts').style.display = 'block';
