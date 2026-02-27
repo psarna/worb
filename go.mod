@@ -8,12 +8,16 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/marcboeker/go-duckdb v1.8.5
 	github.com/spf13/cobra v1.10.2
+	github.com/tursodatabase/libsql-client-go v0.0.0-20251219100830-236aa1ff8acc
 	github.com/vektah/gqlparser/v2 v2.5.31
+	modernc.org/sqlite v1.46.1
 )
 
 require (
 	github.com/agnivade/levenshtein v1.2.1 // indirect
+	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/apache/arrow-go/v18 v18.1.0 // indirect
+	github.com/coder/websocket v1.8.12 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-viper/mapstructure/v2 v2.4.0 // indirect
 	github.com/goccy/go-json v0.10.5 // indirect
@@ -43,5 +47,4 @@ require (
 	modernc.org/libc v1.67.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
-	modernc.org/sqlite v1.46.1 // indirect
 )

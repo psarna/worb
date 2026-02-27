@@ -9,6 +9,7 @@ import (
 	"time"
 
 	_ "github.com/marcboeker/go-duckdb"
+	_ "github.com/tursodatabase/libsql-client-go/libsql"
 	_ "modernc.org/sqlite"
 )
 
@@ -57,6 +58,10 @@ func (db *DB) castJSON(col string) string {
 	return col
 }
 
+func (db *DB) isSQLite() bool {
+	return db.Engine == "sqlite" || db.Engine == "turso"
+}
+
 func New(dataDir, engine string) (*DB, error) {
 	if engine == "" {
 		engine = "sqlite"
@@ -75,6 +80,20 @@ func New(dataDir, engine string) (*DB, error) {
 		db, err = sql.Open("sqlite", dbPath+"?_pragma=journal_mode(wal)&_pragma=foreign_keys(1)")
 		if err != nil {
 			return nil, fmt.Errorf("open sqlite: %w", err)
+		}
+	case "turso":
+		url := os.Getenv("TURSO_URL")
+		if url == "" {
+			return nil, fmt.Errorf("TURSO_URL environment variable is required for turso engine")
+		}
+		token := os.Getenv("TURSO_AUTH_TOKEN")
+		dsn := url
+		if token != "" {
+			dsn += "?authToken=" + token
+		}
+		db, err = sql.Open("libsql", dsn)
+		if err != nil {
+			return nil, fmt.Errorf("open turso: %w", err)
 		}
 	case "duckdb":
 		dbPath := filepath.Join(dataDir, "worb.duckdb")
@@ -143,7 +162,7 @@ func (db *DB) ExecuteQuery(query string) (*QueryResult, error) {
 }
 
 func (db *DB) migrate() error {
-	if db.Engine == "sqlite" {
+	if db.isSQLite() {
 		return db.migrateSQLite()
 	}
 	return db.migrateDuckDB()

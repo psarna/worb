@@ -63,6 +63,20 @@ go build .
 | `--host` | `127.0.0.1` | Host to bind to (use `0.0.0.0` for all interfaces) |
 | `--port` | `8080` | Port to listen on |
 | `--data` | `~/.worb` | Data directory for the database file and uploaded files |
+| `--db-engine` | `sqlite` | Database engine: `sqlite`, `turso`, or `duckdb` |
+
+## Turso
+
+To use [Turso](https://turso.tech) as a hosted database:
+
+```bash
+TURSO_URL=libsql://your-db.turso.io TURSO_AUTH_TOKEN=your-token ./worb --db-engine turso
+```
+
+| Environment Variable | Required | Description |
+|---------------------|----------|-------------|
+| `TURSO_URL` | Yes | Turso database URL (`libsql://...`) |
+| `TURSO_AUTH_TOKEN` | No | Auth token (not needed for local dev) |
 
 ## Backup
 
