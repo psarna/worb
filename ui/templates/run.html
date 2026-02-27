@@ -17,12 +17,15 @@
         </div>
     </header>
     <div class="container">
-        <div class="breadcrumb">
-            <a href="/">Projects</a>
-            <span>/</span>
-            <a href="/projects/{{.Project.ID}}">{{.Project.Name}}</a>
-            <span>/</span>
-            <span style="color: var(--text);">{{if .Run.DisplayName}}{{.Run.DisplayName}}{{else}}{{.Run.Name}}{{end}}</span>
+        <div class="breadcrumb" style="display: flex; align-items: center; justify-content: space-between;">
+            <div>
+                <a href="/">Projects</a>
+                <span>/</span>
+                <a href="/projects/{{.Project.ID}}">{{.Project.Name}}</a>
+                <span>/</span>
+                <span style="color: var(--text);">{{if .Run.DisplayName}}{{.Run.DisplayName}}{{else}}{{.Run.Name}}{{end}}</span>
+            </div>
+            <button id="history-toggle-btn" class="wrap-toggle" style="display:none;" onclick="toggleHistoryView()">show latest</button>
         </div>
 
         <div class="run-header">
@@ -375,16 +378,79 @@ ORDER BY step LIMIT 20</textarea>
         }
     }
 
+    let showHistory = true;
+    let hasCollapsible = false;
+    let _rerenderAll = null;
+
+    function toggleHistoryView() {
+        showHistory = !showHistory;
+        const btn = document.getElementById('history-toggle-btn');
+        btn.textContent = showHistory ? 'show latest' : 'show history';
+        if (_rerenderAll) _rerenderAll();
+    }
+
     async function loadCharts() {
         const grid = document.getElementById('chart-grid');
         const metrics = {};
         let renderPending = false;
 
         function dedupeSorted(points) {
+            const allSameStep = points.length > 1 && points.every(p => p.step === points[0].step);
+            if (allSameStep && showHistory) {
+                const sorted = [...points].sort((a, b) => a.index - b.index);
+                return sorted.map((p, i) => ({ step: i, value: p.value }));
+            }
             const byStep = new Map();
             for (const p of points) byStep.set(p.step, p.value);
             return Array.from(byStep, ([step, value]) => ({ step, value }))
                 .sort((a, b) => a.step - b.step);
+        }
+
+        function destroyAll() {
+            for (const key of Object.keys(allCharts)) {
+                everyChart.delete(allCharts[key]);
+                allCharts[key].destroy();
+                delete allCharts[key];
+            }
+            grid.innerHTML = '';
+        }
+
+        function render() {
+            const sortedKeys = Object.keys(metrics).sort();
+            for (const key of sortedKeys) {
+                const points = dedupeSorted(metrics[key]);
+                const needsBar = points.length === 1;
+                if (allCharts[key]) {
+                    const isBar = allCharts[key].config.type === 'bar';
+                    if (isBar !== needsBar) {
+                        const oldDiv = allCharts[key].canvas.closest('.chart-container');
+                        everyChart.delete(allCharts[key]);
+                        allCharts[key].destroy();
+                        if (oldDiv) oldDiv.remove();
+                        allCharts[key] = createChart(grid, key, points);
+                    } else {
+                        allCharts[key].data.labels = needsBar ? [key.split('/').pop().split('-').pop()] : points.map(p => p.step);
+                        allCharts[key].data.datasets[0].data = points.map(p => p.value);
+                        allCharts[key].update('none');
+                    }
+                } else {
+                    allCharts[key] = createChart(grid, key, points);
+                }
+            }
+            for (const key of sortedKeys) {
+                const div = allCharts[key]?.canvas?.closest('.chart-container');
+                if (div) grid.appendChild(div);
+            }
+            if (!hasCollapsible) {
+                for (const key of sortedKeys) {
+                    const pts = metrics[key];
+                    if (pts && pts.length > 1 && pts.every(p => p.step === pts[0].step)) {
+                        hasCollapsible = true;
+                        document.getElementById('history-toggle-btn').style.display = '';
+                        break;
+                    }
+                }
+            }
         }
 
         function scheduleRender() {
@@ -392,40 +458,21 @@ ORDER BY step LIMIT 20</textarea>
             renderPending = true;
             requestAnimationFrame(() => {
                 renderPending = false;
-                const sortedKeys = Object.keys(metrics).sort();
-                for (const key of sortedKeys) {
-                    const points = dedupeSorted(metrics[key]);
-                    const needsBar = points.length === 1;
-                    if (allCharts[key]) {
-                        const isBar = allCharts[key].config.type === 'bar';
-                        if (isBar && !needsBar) {
-                            const oldDiv = allCharts[key].canvas.closest('.chart-container');
-                            everyChart.delete(allCharts[key]);
-                            allCharts[key].destroy();
-                            if (oldDiv) oldDiv.remove();
-                            allCharts[key] = createChart(grid, key, points);
-                        } else {
-                            allCharts[key].data.labels = needsBar ? [key.split('/').pop().split('-').pop()] : points.map(p => p.step);
-                            allCharts[key].data.datasets[0].data = points.map(p => p.value);
-                            allCharts[key].update('none');
-                        }
-                    } else {
-                        allCharts[key] = createChart(grid, key, points);
-                    }
-                }
-                for (const key of sortedKeys) {
-                    const div = allCharts[key]?.canvas?.closest('.chart-container');
-                    if (div) grid.appendChild(div);
-                }
+                render();
             });
         }
+
+        _rerenderAll = function() {
+            destroyAll();
+            render();
+        };
 
         function parseNdjson(text) {
             for (const line of text.split('\n')) {
                 if (!line) continue;
                 const p = JSON.parse(line);
                 if (!metrics[p.k]) metrics[p.k] = [];
-                metrics[p.k].push({ step: p.s, value: p.v });
+                metrics[p.k].push({ step: p.s, value: p.v, index: p.i });
             }
         }
 
@@ -452,7 +499,7 @@ ORDER BY step LIMIT 20</textarea>
                 if (!line) continue;
                 const p = JSON.parse(line);
                 if (!metrics[p.k]) metrics[p.k] = [];
-                metrics[p.k].push({ step: p.s, value: p.v });
+                metrics[p.k].push({ step: p.s, value: p.v, index: p.i });
             }
             scheduleRender();
         }
@@ -460,7 +507,7 @@ ORDER BY step LIMIT 20</textarea>
             fullText += '\n';
             const p = JSON.parse(buffer);
             if (!metrics[p.k]) metrics[p.k] = [];
-            metrics[p.k].push({ step: p.s, value: p.v });
+            metrics[p.k].push({ step: p.s, value: p.v, index: p.i });
             scheduleRender();
         }
         setCachedHistory(runID, runHistoryLineCount, fullText);

@@ -77,6 +77,7 @@ type ScalarPoint struct {
 	Key   string  `json:"k"`
 	Step  float64 `json:"s"`
 	Value float64 `json:"v"`
+	Index int     `json:"i"`
 }
 
 func (db *DB) StreamHistoryScalars(runID string, emit func(ScalarPoint) error) error {
@@ -114,7 +115,7 @@ func (db *DB) StreamHistoryScalars(runID string, emit func(ScalarPoint) error) e
 			if json.Unmarshal(raw, &v) != nil {
 				continue
 			}
-			if err := emit(ScalarPoint{Key: key, Step: xVal, Value: v}); err != nil {
+			if err := emit(ScalarPoint{Key: key, Step: xVal, Value: v, Index: step}); err != nil {
 				return err
 			}
 		}

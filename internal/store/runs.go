@@ -198,7 +198,7 @@ func (db *DB) GetRun(id string) (*Run, error) {
 	err := db.QueryRow(fmt.Sprintf(`SELECT r.id, r.project_id, r.name, r.display_name,
 		%s, %s, r.state,
 		r.host, r.program, r.git_commit, %s, r.notes, r.group_name, r.job_type, r.sweep_name,
-		r.history_line_count, r.events_line_count, r.log_line_count,
+		COALESCE((SELECT COUNT(DISTINCT step) FROM history WHERE run_id = r.id), 0), r.events_line_count, r.log_line_count,
 		r.created_at, r.updated_at, r.heartbeat_at
 		FROM runs r WHERE r.id = ?`, db.castJSON("r.config"), db.castJSON("r.summary"), db.castJSON("r.tags")), id).
 		Scan(&r.ID, &r.ProjectID, &r.Name, &displayName, &config, &summary, &r.State,
