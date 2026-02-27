@@ -601,7 +601,7 @@ ORDER BY step LIMIT 20</textarea>
                 return;
             }
 
-            status.textContent = `${data.rows.length} rows in ${elapsed}s`;
+            status.textContent = `${data.rows.length} rows in ${elapsed}s` + (data.truncated ? ' (truncated)' : '');
             status.className = 'query-status success';
 
             if (data.columns.length === 0) {

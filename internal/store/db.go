@@ -1,6 +1,7 @@
 package store
 
 import (
+	"context"
 	"database/sql"
 	"database/sql/driver"
 	"fmt"
@@ -115,12 +116,18 @@ func New(dataDir, engine string) (*DB, error) {
 }
 
 type QueryResult struct {
-	Columns []string        `json:"columns"`
-	Rows    [][]interface{} `json:"rows"`
+	Columns   []string        `json:"columns"`
+	Rows      [][]interface{} `json:"rows"`
+	Truncated bool            `json:"truncated,omitempty"`
 }
 
+const maxQueryRows = 10000
+
 func (db *DB) ExecuteQuery(query string) (*QueryResult, error) {
-	rows, err := db.Query(query)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		return nil, err
 	}
@@ -134,6 +141,10 @@ func (db *DB) ExecuteQuery(query string) (*QueryResult, error) {
 	result := &QueryResult{Columns: cols}
 
 	for rows.Next() {
+		if len(result.Rows) >= maxQueryRows {
+			result.Truncated = true
+			break
+		}
 		vals := make([]interface{}, len(cols))
 		ptrs := make([]interface{}, len(cols))
 		for i := range vals {
