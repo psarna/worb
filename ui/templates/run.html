@@ -131,7 +131,11 @@ LIMIT 20</textarea>
 
     function resetAllZoom() {
         for (const c of everyChart) {
-            if (c.resetZoom) c.resetZoom();
+            if (c.options.scales?.x) {
+                c.options.scales.x.min = undefined;
+                c.options.scales.x.max = undefined;
+            }
+            c.update('none');
             const btn = c.canvas.closest('.chart-container')?.querySelector('.zoom-reset-btn');
             if (btn) btn.style.display = 'none';
         }
