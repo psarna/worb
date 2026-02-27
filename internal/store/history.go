@@ -123,6 +123,71 @@ func (db *DB) StreamHistoryScalars(runID string, emit func(ScalarPoint) error) e
 	return rows.Err()
 }
 
+type ProjectScalarPoint struct {
+	RunID   string  `json:"r"`
+	RunName string  `json:"n"`
+	Key     string  `json:"k"`
+	Step    float64 `json:"s"`
+	Value   float64 `json:"v"`
+	Index   int     `json:"i"`
+}
+
+func (db *DB) StreamProjectHistoryScalars(projectID string, emit func(ProjectScalarPoint) error) error {
+	rows, err := db.Query(fmt.Sprintf(`
+		SELECT r.id, COALESCE(NULLIF(r.display_name, ''), r.name) as run_name, h.step, %s
+		FROM history h
+		JOIN runs r ON r.id = h.run_id
+		WHERE r.project_id = ?
+		ORDER BY r.created_at, h.step`, db.castJSON("h.data")), projectID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var runID, runName string
+		var step int
+		var data string
+		if err := rows.Scan(&runID, &runName, &step, &data); err != nil {
+			return err
+		}
+
+		var obj map[string]json.RawMessage
+		if json.Unmarshal([]byte(data), &obj) != nil {
+			continue
+		}
+
+		xVal := float64(step)
+		if raw, ok := obj["step"]; ok {
+			var v float64
+			if json.Unmarshal(raw, &v) == nil {
+				xVal = v
+			}
+		}
+
+		for key, raw := range obj {
+			if len(key) > 0 && key[0] == '_' || key == "step" {
+				continue
+			}
+			var v float64
+			if json.Unmarshal(raw, &v) != nil {
+				continue
+			}
+			if err := emit(ProjectScalarPoint{
+				RunID:   runID,
+				RunName: runName,
+				Key:     key,
+				Step:    xVal,
+				Value:   v,
+				Index:   step,
+			}); err != nil {
+				return err
+			}
+		}
+	}
+	return rows.Err()
+}
+
 func (db *DB) UpdateRunSummary(runID string, summary json.RawMessage) error {
 	_, err := db.Exec("UPDATE runs SET summary = ?, updated_at = current_timestamp WHERE id = ?", string(summary), runID)
 	return err
