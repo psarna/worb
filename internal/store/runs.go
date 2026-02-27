@@ -47,8 +47,10 @@ func (db *DB) EnsureProject(entity, name string) (*Project, error) {
 	}
 
 	var p Project
+	var createdAt flexTime
 	err := db.QueryRow("SELECT id, entity, name, created_at FROM projects WHERE entity = ? AND name = ?", entity, name).
-		Scan(&p.ID, &p.Entity, &p.Name, &p.CreatedAt)
+		Scan(&p.ID, &p.Entity, &p.Name, &createdAt)
+	p.CreatedAt = createdAt.Time
 	if err == nil {
 		return &p, nil
 	}
@@ -191,6 +193,7 @@ func (db *DB) GetRun(id string) (*Run, error) {
 	r := &Run{}
 	var config, summary, tags sql.NullString
 	var displayName, host, program, gitCommit, notes, groupName, jobType, sweepName sql.NullString
+	var createdAt, updatedAt, heartbeatAt flexTime
 	err := db.QueryRow(fmt.Sprintf(`SELECT r.id, r.project_id, r.name, r.display_name,
 		%s, %s, r.state,
 		r.host, r.program, r.git_commit, %s, r.notes, r.group_name, r.job_type, r.sweep_name,
@@ -200,7 +203,10 @@ func (db *DB) GetRun(id string) (*Run, error) {
 		Scan(&r.ID, &r.ProjectID, &r.Name, &displayName, &config, &summary, &r.State,
 			&host, &program, &gitCommit, &tags, &notes, &groupName, &jobType, &sweepName,
 			&r.HistoryLineCount, &r.EventsLineCount, &r.LogLineCount,
-			&r.CreatedAt, &r.UpdatedAt, &r.HeartbeatAt)
+			&createdAt, &updatedAt, &heartbeatAt)
+	r.CreatedAt = createdAt.Time
+	r.UpdatedAt = updatedAt.Time
+	r.HeartbeatAt = heartbeatAt.Time
 	if err != nil {
 		return nil, err
 	}
@@ -305,9 +311,11 @@ func (db *DB) ListProjects(entity string) ([]*Project, error) {
 	var projects []*Project
 	for rows.Next() {
 		p := &Project{}
-		if err := rows.Scan(&p.ID, &p.Entity, &p.Name, &p.CreatedAt); err != nil {
+		var ca flexTime
+		if err := rows.Scan(&p.ID, &p.Entity, &p.Name, &ca); err != nil {
 			return nil, err
 		}
+		p.CreatedAt = ca.Time
 		projects = append(projects, p)
 	}
 	return projects, nil
@@ -315,20 +323,24 @@ func (db *DB) ListProjects(entity string) ([]*Project, error) {
 
 func (db *DB) GetProject(id string) (*Project, error) {
 	p := &Project{}
+	var ca flexTime
 	err := db.QueryRow("SELECT id, entity, name, created_at FROM projects WHERE id = ?", id).
-		Scan(&p.ID, &p.Entity, &p.Name, &p.CreatedAt)
+		Scan(&p.ID, &p.Entity, &p.Name, &ca)
 	if err != nil {
 		return nil, err
 	}
+	p.CreatedAt = ca.Time
 	return p, nil
 }
 
 func (db *DB) GetProjectByName(entity, name string) (*Project, error) {
 	p := &Project{}
+	var ca flexTime
 	err := db.QueryRow("SELECT id, entity, name, created_at FROM projects WHERE entity = ? AND name = ?", entity, name).
-		Scan(&p.ID, &p.Entity, &p.Name, &p.CreatedAt)
+		Scan(&p.ID, &p.Entity, &p.Name, &ca)
 	if err != nil {
 		return nil, err
 	}
+	p.CreatedAt = ca.Time
 	return p, nil
 }

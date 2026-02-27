@@ -54,7 +54,7 @@ func (db *DB) InsertHistoryBatch(runID string, rows []struct {
 }
 
 func (db *DB) GetHistory(runID string) ([]HistoryRow, error) {
-	rows, err := db.Query(fmt.Sprintf("SELECT run_id, step, %s, timestamp FROM history WHERE run_id = ? ORDER BY timestamp, step", db.castJSON("data")), runID)
+	rows, err := db.Query(fmt.Sprintf("SELECT run_id, step, %s, timestamp FROM history WHERE run_id = ? ORDER BY step", db.castJSON("data")), runID)
 	if err != nil {
 		return nil, err
 	}
@@ -80,7 +80,7 @@ type ScalarPoint struct {
 }
 
 func (db *DB) StreamHistoryScalars(runID string, emit func(ScalarPoint) error) error {
-	rows, err := db.Query(fmt.Sprintf("SELECT step, %s FROM history WHERE run_id = ? ORDER BY timestamp, step", db.castJSON("data")), runID)
+	rows, err := db.Query(fmt.Sprintf("SELECT step, %s FROM history WHERE run_id = ? ORDER BY step", db.castJSON("data")), runID)
 	if err != nil {
 		return err
 	}

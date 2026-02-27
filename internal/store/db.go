@@ -2,13 +2,48 @@ package store
 
 import (
 	"database/sql"
+	"database/sql/driver"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	_ "github.com/marcboeker/go-duckdb"
 	_ "modernc.org/sqlite"
 )
+
+type flexTime struct {
+	time.Time
+}
+
+func (ft *flexTime) Scan(value interface{}) error {
+	switch v := value.(type) {
+	case time.Time:
+		ft.Time = v
+		return nil
+	case string:
+		for _, layout := range []string{
+			"2006-01-02 15:04:05",
+			"2006-01-02T15:04:05Z",
+			time.RFC3339,
+		} {
+			if t, err := time.Parse(layout, v); err == nil {
+				ft.Time = t
+				return nil
+			}
+		}
+		return fmt.Errorf("flexTime: cannot parse %q", v)
+	case nil:
+		ft.Time = time.Time{}
+		return nil
+	default:
+		return fmt.Errorf("flexTime: unsupported type %T (%v)", value, value)
+	}
+}
+
+func (ft flexTime) Value() (driver.Value, error) {
+	return ft.Time, nil
+}
 
 type DB struct {
 	*sql.DB
