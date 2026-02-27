@@ -100,6 +100,7 @@ func (s *Server) setupRoutes() {
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/projects", s.apiListProjects)
 		r.Get("/projects/{projectID}/runs", s.apiListRuns)
+		r.Get("/projects/{projectID}/history", s.apiGetProjectHistory)
 		r.Get("/runs/{runID}", s.apiGetRun)
 		r.Get("/runs/{runID}/history", s.apiGetHistory)
 		r.Get("/runs/{runID}/logs", s.apiGetLogs)
@@ -179,6 +180,37 @@ func (s *Server) apiGetHistory(w http.ResponseWriter, r *http.Request) {
 	n := 0
 
 	err := s.store.StreamHistoryScalars(runID, func(p store.ScalarPoint) error {
+		if err := enc.Encode(p); err != nil {
+			return err
+		}
+		n++
+		if canFlush && n%50 == 0 {
+			flusher.Flush()
+		}
+		return nil
+	})
+	if err != nil {
+		if n == 0 {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+	if canFlush {
+		flusher.Flush()
+	}
+}
+
+func (s *Server) apiGetProjectHistory(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
+
+	w.Header().Set("Content-Type", "application/x-ndjson")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+
+	flusher, canFlush := w.(http.Flusher)
+	enc := json.NewEncoder(w)
+	n := 0
+
+	err := s.store.StreamProjectHistoryScalars(projectID, func(p store.ProjectScalarPoint) error {
 		if err := enc.Encode(p); err != nil {
 			return err
 		}

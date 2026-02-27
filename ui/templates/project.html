@@ -6,6 +6,9 @@
     <title>{{.Project.Name}} - worb</title>
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/svg+xml" href="/static/worb.svg">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2"></script>
 </head>
 <body>
     <header>
@@ -18,7 +21,18 @@
         <div class="breadcrumb">
             <a href="/">Projects</a> <span>/</span> <span style="color: var(--text);">{{.Project.Name}}</span>
         </div>
-        <h2>Runs</h2>
+
+        <div class="tabs">
+            <div class="tab active" data-tab="charts">Charts</div>
+            <div class="tab" data-tab="runs">Runs</div>
+        </div>
+
+        <div id="charts" class="tab-content active">
+            <div class="chart-grid" id="chart-grid"></div>
+            <div class="empty-state" id="no-charts" style="display:none;">No metrics logged yet.</div>
+        </div>
+
+        <div id="runs" class="tab-content">
         {{if .Runs}}
         <table>
             <thead>
@@ -45,6 +59,326 @@
         {{else}}
         <div class="empty-state">No runs yet.</div>
         {{end}}
+        </div>
     </div>
+
+    <script>
+    const projectID = "{{.Project.ID}}";
+
+    const RUN_COLORS = [
+        '#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff',
+        '#f778ba', '#79c0ff', '#56d364', '#e3b341', '#ff7b72',
+        '#d2a8ff', '#ff9bce', '#a5d6ff', '#7ee787', '#f0883e',
+    ];
+
+    document.querySelectorAll('.tab').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            document.getElementById(tab.dataset.tab).classList.add('active');
+        });
+    });
+
+    const allCharts = {};
+    const everyChart = new Set();
+    let syncing = false;
+
+    function syncZoom(source, min, max) {
+        if (syncing) return;
+        syncing = true;
+        for (const c of everyChart) {
+            const btn = c.canvas.closest('.chart-container')?.querySelector('.zoom-reset-btn');
+            if (btn) btn.style.display = 'inline-block';
+            if (c === source) continue;
+            if (c.resetZoom) c.zoomScale('x', {min, max}, 'none');
+        }
+        syncing = false;
+    }
+
+    function resetAllZoom() {
+        for (const c of everyChart) {
+            if (c.options.scales?.x) {
+                c.options.scales.x.min = undefined;
+                c.options.scales.x.max = undefined;
+            }
+            c.update('none');
+            const btn = c.canvas.closest('.chart-container')?.querySelector('.zoom-reset-btn');
+            if (btn) btn.style.display = 'none';
+        }
+    }
+
+    let expandedOverlay = null;
+
+    function expandChart(key) {
+        if (expandedOverlay) return;
+        const src = allCharts[key];
+        if (!src) return;
+
+        const overlay = document.createElement('div');
+        overlay.className = 'chart-overlay';
+
+        const container = document.createElement('div');
+        container.className = 'chart-container';
+        container.innerHTML = `<div class="chart-header"><div class="chart-title">${key}</div><button class="zoom-reset-btn" style="display:none;" title="Reset zoom">Reset</button></div><canvas></canvas>`;
+        overlay.appendChild(container);
+        document.body.appendChild(overlay);
+        expandedOverlay = overlay;
+
+        const data = JSON.parse(JSON.stringify(src.data));
+        const resetBtn = container.querySelector('.zoom-reset-btn');
+
+        const expandedChart = new Chart(container.querySelector('canvas'), {
+            type: 'line',
+            data: data,
+            options: {
+                responsive: true,
+                parsing: false,
+                plugins: {
+                    legend: { display: true, position: 'top', labels: { color: '#8b949e', boxWidth: 12, padding: 12, font: { size: 11 } } },
+                    zoom: {
+                        zoom: {
+                            drag: {
+                                enabled: true,
+                                backgroundColor: 'rgba(88,166,255,0.15)',
+                                borderColor: '#58a6ff',
+                                borderWidth: 1,
+                            },
+                            mode: 'x',
+                            onZoomComplete: () => { resetBtn.style.display = 'inline-block'; },
+                        },
+                    },
+                },
+                scales: {
+                    x: { type: 'linear', title: { display: true, text: 'step', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                    y: { title: { display: true, text: key, color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                },
+                animation: false,
+            }
+        });
+
+        everyChart.add(expandedChart);
+
+        if (src.scales && src.scales.x) {
+            const srcX = src.scales.x;
+            const fullMin = src.data.labels[0];
+            const fullMax = src.data.labels[src.data.labels.length - 1];
+            if (srcX.min !== fullMin || srcX.max !== fullMax) {
+                expandedChart.zoomScale('x', { min: srcX.min, max: srcX.max }, 'none');
+                resetBtn.style.display = 'inline-block';
+            }
+        }
+
+        resetBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            resetAllZoom();
+        });
+
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                everyChart.delete(expandedChart);
+                expandedChart.destroy();
+                overlay.remove();
+                expandedOverlay = null;
+            }
+        });
+    }
+
+    function createChart(grid, key, runDatasets, runOrder, runColors) {
+        const div = document.createElement('div');
+        div.className = 'chart-container';
+        div.id = 'cc-' + key.replace(/[^a-zA-Z0-9]/g, '_');
+        div.innerHTML = `<div class="chart-header"><div class="chart-title">${key}</div><button class="zoom-reset-btn" style="display:none;" title="Reset zoom">Reset</button></div><canvas></canvas>`;
+        grid.appendChild(div);
+
+        const resetBtn = div.querySelector('.zoom-reset-btn');
+        const multiRun = runOrder.length > 1;
+
+        const datasets = runOrder.map((runID, idx) => {
+            const points = runDatasets[runID] || [];
+            const color = runColors[runID] || RUN_COLORS[idx % RUN_COLORS.length];
+            return {
+                label: points[0]?.runName || runID.slice(0, 8),
+                data: points.map(p => ({ x: p.step, y: p.value })),
+                borderColor: color,
+                backgroundColor: multiRun ? 'transparent' : color + '1a',
+                borderWidth: 1.5,
+                pointRadius: 0,
+                tension: 0.1,
+                fill: !multiRun,
+            };
+        });
+
+        const allSteps = new Set();
+        for (const ds of datasets) {
+            for (const p of ds.data) allSteps.add(p.x);
+        }
+        const labels = [...allSteps].sort((a, b) => a - b);
+
+        const chart = new Chart(div.querySelector('canvas'), {
+            type: 'line',
+            data: { labels, datasets },
+            options: {
+                responsive: true,
+                parsing: false,
+                plugins: {
+                    legend: multiRun
+                        ? { display: true, position: 'top', labels: { color: '#8b949e', boxWidth: 12, padding: 12, font: { size: 11 } } }
+                        : { display: false },
+                    zoom: {
+                        zoom: {
+                            drag: {
+                                enabled: true,
+                                backgroundColor: 'rgba(88,166,255,0.15)',
+                                borderColor: '#58a6ff',
+                                borderWidth: 1,
+                            },
+                            mode: 'x',
+                            onZoomComplete: ({chart: zoomedChart}) => {
+                                const {min, max} = zoomedChart.scales.x;
+                                syncZoom(zoomedChart, min, max);
+                            },
+                        },
+                    },
+                },
+                scales: {
+                    x: {
+                        type: 'linear',
+                        title: { display: true, text: 'step', color: '#8b949e' },
+                        ticks: { color: '#8b949e' },
+                        grid: { color: '#30363d' },
+                    },
+                    y: {
+                        title: { display: true, text: key, color: '#8b949e' },
+                        ticks: { color: '#8b949e' },
+                        grid: { color: '#30363d' },
+                    },
+                },
+                animation: false,
+            }
+        });
+
+        everyChart.add(chart);
+
+        resetBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            resetAllZoom();
+        });
+
+        let mouseDownPos = null;
+        div.addEventListener('mousedown', (e) => { mouseDownPos = { x: e.clientX, y: e.clientY }; });
+        div.addEventListener('click', (e) => {
+            if (!mouseDownPos) return;
+            const dx = e.clientX - mouseDownPos.x;
+            const dy = e.clientY - mouseDownPos.y;
+            if (dx * dx + dy * dy < 25) expandChart(key);
+            mouseDownPos = null;
+        });
+
+        return chart;
+    }
+
+    async function loadCharts() {
+        const grid = document.getElementById('chart-grid');
+        // metrics[metricKey][runID] = [{step, value, runName}, ...]
+        const metrics = {};
+        const runOrder = [];
+        const runSeen = new Set();
+        const runColors = {};
+        let renderPending = false;
+        let colorIdx = 0;
+
+        function ensureRun(runID, runName) {
+            if (!runSeen.has(runID)) {
+                runSeen.add(runID);
+                runOrder.push(runID);
+                runColors[runID] = RUN_COLORS[colorIdx % RUN_COLORS.length];
+                colorIdx++;
+            }
+        }
+
+        function render() {
+            const sortedKeys = Object.keys(metrics).sort();
+            for (const key of sortedKeys) {
+                const runDatasets = metrics[key];
+                if (allCharts[key]) {
+                    // update existing
+                    const chart = allCharts[key];
+                    const allSteps = new Set();
+                    const dsArr = runOrder.filter(rid => runDatasets[rid]?.length).map((runID, idx) => {
+                        const points = runDatasets[runID];
+                        const data = points.map(p => ({ x: p.step, y: p.value }));
+                        for (const p of data) allSteps.add(p.x);
+                        return {
+                            label: points[0]?.runName || runID.slice(0, 8),
+                            data,
+                            borderColor: runColors[runID],
+                            backgroundColor: runOrder.length > 1 ? 'transparent' : runColors[runID] + '1a',
+                            borderWidth: 1.5,
+                            pointRadius: 0,
+                            tension: 0.1,
+                            fill: runOrder.length <= 1,
+                        };
+                    });
+                    chart.data.labels = [...allSteps].sort((a, b) => a - b);
+                    chart.data.datasets = dsArr;
+                    chart.options.plugins.legend.display = runOrder.length > 1;
+                    chart.update('none');
+                } else {
+                    allCharts[key] = createChart(grid, key, runDatasets, runOrder.filter(rid => runDatasets[rid]?.length), runColors);
+                }
+            }
+            for (const key of sortedKeys) {
+                const div = allCharts[key]?.canvas?.closest('.chart-container');
+                if (div) grid.appendChild(div);
+            }
+        }
+
+        function scheduleRender() {
+            if (renderPending) return;
+            renderPending = true;
+            requestAnimationFrame(() => {
+                renderPending = false;
+                render();
+            });
+        }
+
+        const resp = await fetch(`/api/projects/${projectID}/history`);
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            buffer += chunk;
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+            for (const line of lines) {
+                if (!line) continue;
+                const p = JSON.parse(line);
+                ensureRun(p.r, p.n);
+                if (!metrics[p.k]) metrics[p.k] = {};
+                if (!metrics[p.k][p.r]) metrics[p.k][p.r] = [];
+                metrics[p.k][p.r].push({ step: p.s, value: p.v, runName: p.n });
+            }
+            scheduleRender();
+        }
+        if (buffer.trim()) {
+            const p = JSON.parse(buffer);
+            ensureRun(p.r, p.n);
+            if (!metrics[p.k]) metrics[p.k] = {};
+            if (!metrics[p.k][p.r]) metrics[p.k][p.r] = [];
+            metrics[p.k][p.r].push({ step: p.s, value: p.v, runName: p.n });
+            scheduleRender();
+        }
+
+        if (Object.keys(metrics).length === 0) {
+            document.getElementById('no-charts').style.display = 'block';
+        }
+    }
+
+    loadCharts();
+    </script>
 </body>
 </html>
