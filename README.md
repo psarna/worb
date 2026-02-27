@@ -86,6 +86,7 @@ All data lives in a single file (`~/.worb/worb.db`, `~/.worb/worb.duckdb`). To b
 
 ![](img/p1.webm)
 ![](img/p2.png)
-![](img/p3.png)
 ![](img/p4.png)
+![](img/p5.png)
+![](img/p6.png)
 
