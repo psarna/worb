@@ -7,24 +7,51 @@ import (
 	"path/filepath"
 
 	_ "github.com/marcboeker/go-duckdb"
+	_ "modernc.org/sqlite"
 )
 
 type DB struct {
 	*sql.DB
+	Engine string
 }
 
-func New(dataDir string) (*DB, error) {
+func (db *DB) castJSON(col string) string {
+	if db.Engine == "duckdb" {
+		return "CAST(" + col + " AS VARCHAR)"
+	}
+	return col
+}
+
+func New(dataDir, engine string) (*DB, error) {
+	if engine == "" {
+		engine = "sqlite"
+	}
+
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
 		return nil, fmt.Errorf("create data dir: %w", err)
 	}
 
-	dbPath := filepath.Join(dataDir, "worb.duckdb")
-	db, err := sql.Open("duckdb", dbPath)
-	if err != nil {
-		return nil, fmt.Errorf("open duckdb: %w", err)
+	var db *sql.DB
+	var err error
+
+	switch engine {
+	case "sqlite":
+		dbPath := filepath.Join(dataDir, "worb.db")
+		db, err = sql.Open("sqlite", dbPath+"?_pragma=journal_mode(wal)&_pragma=foreign_keys(1)")
+		if err != nil {
+			return nil, fmt.Errorf("open sqlite: %w", err)
+		}
+	case "duckdb":
+		dbPath := filepath.Join(dataDir, "worb.duckdb")
+		db, err = sql.Open("duckdb", dbPath)
+		if err != nil {
+			return nil, fmt.Errorf("open duckdb: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("unsupported db engine: %s", engine)
 	}
 
-	store := &DB{db}
+	store := &DB{DB: db, Engine: engine}
 	if err := store.migrate(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("migrate: %w", err)
@@ -81,6 +108,97 @@ func (db *DB) ExecuteQuery(query string) (*QueryResult, error) {
 }
 
 func (db *DB) migrate() error {
+	if db.Engine == "sqlite" {
+		return db.migrateSQLite()
+	}
+	return db.migrateDuckDB()
+}
+
+func (db *DB) migrateSQLite() error {
+	migrations := []string{
+		`CREATE TABLE IF NOT EXISTS projects (
+			id TEXT PRIMARY KEY,
+			entity TEXT NOT NULL DEFAULT 'local',
+			name TEXT NOT NULL,
+			created_at TEXT DEFAULT (datetime('now')),
+			UNIQUE(entity, name)
+		)`,
+		`CREATE TABLE IF NOT EXISTS runs (
+			id TEXT PRIMARY KEY,
+			project_id TEXT NOT NULL REFERENCES projects(id),
+			name TEXT NOT NULL,
+			display_name TEXT,
+			config TEXT,
+			summary TEXT,
+			state TEXT DEFAULT 'running',
+			host TEXT,
+			program TEXT,
+			git_commit TEXT,
+			tags TEXT DEFAULT '[]',
+			notes TEXT,
+			group_name TEXT,
+			job_type TEXT,
+			sweep_name TEXT,
+			history_line_count INTEGER DEFAULT 0,
+			events_line_count INTEGER DEFAULT 0,
+			log_line_count INTEGER DEFAULT 0,
+			created_at TEXT DEFAULT (datetime('now')),
+			updated_at TEXT DEFAULT (datetime('now')),
+			heartbeat_at TEXT DEFAULT (datetime('now'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS history (
+			run_id TEXT NOT NULL REFERENCES runs(id),
+			step INTEGER NOT NULL,
+			data TEXT NOT NULL,
+			timestamp TEXT DEFAULT (datetime('now'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS system_events (
+			run_id TEXT NOT NULL REFERENCES runs(id),
+			line_num INTEGER NOT NULL,
+			data TEXT NOT NULL,
+			timestamp TEXT DEFAULT (datetime('now'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS console_logs (
+			run_id TEXT NOT NULL REFERENCES runs(id),
+			line_num INTEGER NOT NULL,
+			line TEXT NOT NULL,
+			stream TEXT DEFAULT 'stdout',
+			timestamp TEXT DEFAULT (datetime('now'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS artifacts (
+			id TEXT PRIMARY KEY,
+			run_id TEXT NOT NULL REFERENCES runs(id),
+			type TEXT NOT NULL,
+			name TEXT NOT NULL,
+			digest TEXT,
+			state TEXT DEFAULT 'pending',
+			metadata TEXT,
+			created_at TEXT DEFAULT (datetime('now'))
+		)`,
+		`CREATE TABLE IF NOT EXISTS files (
+			id TEXT PRIMARY KEY,
+			run_id TEXT NOT NULL REFERENCES runs(id),
+			name TEXT NOT NULL,
+			url TEXT,
+			size INTEGER DEFAULT 0,
+			created_at TEXT DEFAULT (datetime('now'))
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_history_run_id ON history(run_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_system_events_run_id ON system_events(run_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_console_logs_run_id ON console_logs(run_id)`,
+		`CREATE INDEX IF NOT EXISTS idx_runs_project_id ON runs(project_id)`,
+	}
+
+	for _, m := range migrations {
+		if _, err := db.Exec(m); err != nil {
+			return fmt.Errorf("migration failed: %w\nSQL: %s", err, m)
+		}
+	}
+
+	return nil
+}
+
+func (db *DB) migrateDuckDB() error {
 	migrations := []string{
 		`CREATE TABLE IF NOT EXISTS projects (
 			id TEXT PRIMARY KEY,

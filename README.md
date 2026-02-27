@@ -8,7 +8,7 @@ https://worb.cloud
 
 Local, single-binary server compatible with the standard `wandb` Python client. Also, a bad pun.
 
-- **Powered by DuckDB**: single file, simple backups, built-in SQL console
+- **Powered by SQLite, Turso, or DuckDB**: single file, simple backups, built-in SQL console
 - **Single executable**: build and run anywhere, just set `WANDB_BASE_URL=http://your-worb-server`
 - **built-in GraphQL console**: for the men of culture
 
@@ -62,11 +62,11 @@ go build .
 |------|---------|-------------|
 | `--host` | `127.0.0.1` | Host to bind to (use `0.0.0.0` for all interfaces) |
 | `--port` | `8080` | Port to listen on |
-| `--data` | `~/.worb` | Data directory for DuckDB and uploaded files |
+| `--data` | `~/.worb` | Data directory for the database file and uploaded files |
 
 ## Backup
 
-All data lives in a single DuckDB file (`~/.worb/worb.duckdb`). To back it up, just copy the file — no export tools or dump commands needed.
+All data lives in a single file (`~/.worb/worb.db`, `~/.worb/worb.duckdb`). To back it up, just copy the file — no export tools or dump commands needed.
 
 ## Demo
 

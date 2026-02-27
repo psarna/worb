@@ -61,5 +61,6 @@ func (s *Server) uiRun(w http.ResponseWriter, r *http.Request) {
 		"Project":     project,
 		"ConfigJSON":  configJSON,
 		"SummaryJSON": summaryJSON,
+		"DBEngine":    s.config.DBEngine,
 	})
 }

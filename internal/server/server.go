@@ -23,9 +23,10 @@ import (
 )
 
 type Config struct {
-	Host    string
-	Port    int
-	DataDir string
+	Host     string
+	Port     int
+	DataDir  string
+	DBEngine string
 }
 
 type Server struct {
@@ -36,7 +37,7 @@ type Server struct {
 }
 
 func New(cfg Config) (*Server, error) {
-	db, err := store.New(cfg.DataDir)
+	db, err := store.New(cfg.DataDir, cfg.DBEngine)
 	if err != nil {
 		return nil, fmt.Errorf("init store: %w", err)
 	}
@@ -118,7 +119,7 @@ func (s *Server) setupRoutes() {
 
 func (s *Server) Run() error {
 	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
-	log.Printf("worb listening on http://%s", addr)
+	log.Printf("worb listening on http://%s (db: %s)", addr, s.config.DBEngine)
 	return http.ListenAndServe(addr, s.router)
 }
 

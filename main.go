@@ -16,15 +16,17 @@ func main() {
 	var host string
 	var port int
 	var dataDir string
+	var dbEngine string
 
 	cmd := &cobra.Command{
 		Use:   "worb",
 		Short: "Local, single-binary server compatible with the standard wandb Python client",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			srv, err := server.New(server.Config{
-				Host:    host,
-				Port:    port,
-				DataDir: dataDir,
+				Host:     host,
+				Port:     port,
+				DataDir:  dataDir,
+				DBEngine: dbEngine,
 			})
 			if err != nil {
 				return err
@@ -36,6 +38,7 @@ func main() {
 	cmd.Flags().StringVar(&host, "host", "127.0.0.1", "host to bind to (use 0.0.0.0 for all interfaces)")
 	cmd.Flags().IntVar(&port, "port", 8080, "port to listen on")
 	cmd.Flags().StringVar(&dataDir, "data", defaultDataDir, "data directory")
+	cmd.Flags().StringVar(&dbEngine, "db-engine", "sqlite", "database engine (sqlite or duckdb)")
 
 	if err := cmd.Execute(); err != nil {
 		log.Fatal(err)

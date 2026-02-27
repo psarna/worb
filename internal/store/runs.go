@@ -191,12 +191,12 @@ func (db *DB) GetRun(id string) (*Run, error) {
 	r := &Run{}
 	var config, summary, tags sql.NullString
 	var displayName, host, program, gitCommit, notes, groupName, jobType, sweepName sql.NullString
-	err := db.QueryRow(`SELECT r.id, r.project_id, r.name, r.display_name,
-		CAST(r.config AS VARCHAR), CAST(r.summary AS VARCHAR), r.state,
-		r.host, r.program, r.git_commit, CAST(r.tags AS VARCHAR), r.notes, r.group_name, r.job_type, r.sweep_name,
+	err := db.QueryRow(fmt.Sprintf(`SELECT r.id, r.project_id, r.name, r.display_name,
+		%s, %s, r.state,
+		r.host, r.program, r.git_commit, %s, r.notes, r.group_name, r.job_type, r.sweep_name,
 		r.history_line_count, r.events_line_count, r.log_line_count,
 		r.created_at, r.updated_at, r.heartbeat_at
-		FROM runs r WHERE r.id = ?`, id).
+		FROM runs r WHERE r.id = ?`, db.castJSON("r.config"), db.castJSON("r.summary"), db.castJSON("r.tags")), id).
 		Scan(&r.ID, &r.ProjectID, &r.Name, &displayName, &config, &summary, &r.State,
 			&host, &program, &gitCommit, &tags, &notes, &groupName, &jobType, &sweepName,
 			&r.HistoryLineCount, &r.EventsLineCount, &r.LogLineCount,
