@@ -63,10 +63,9 @@
             <div class="console-container">
                 <div class="console-editor">
                     <textarea id="sql-input" spellcheck="false">-- engine: {{.DBEngine}}
-SELECT display_name, state, history_line_count, created_at
-FROM runs
-ORDER BY created_at DESC
-LIMIT 20</textarea>
+SELECT step, data FROM history
+WHERE run_id = '{{.Run.ID}}'
+ORDER BY step LIMIT 20</textarea>
                     <div class="console-actions">
                         <button id="run-query-btn" onclick="runQuery()">Run Query</button>
                         <span id="query-status" class="query-status"></span>
