@@ -389,7 +389,8 @@ LIMIT 20</textarea>
             renderPending = true;
             requestAnimationFrame(() => {
                 renderPending = false;
-                for (const key of Object.keys(metrics)) {
+                const sortedKeys = Object.keys(metrics).sort();
+                for (const key of sortedKeys) {
                     const points = dedupeSorted(metrics[key]);
                     const needsBar = points.length === 1;
                     if (allCharts[key]) {
@@ -408,6 +409,10 @@ LIMIT 20</textarea>
                     } else {
                         allCharts[key] = createChart(grid, key, points);
                     }
+                }
+                for (const key of sortedKeys) {
+                    const div = allCharts[key]?.canvas?.closest('.chart-container');
+                    if (div) grid.appendChild(div);
                 }
             });
         }
