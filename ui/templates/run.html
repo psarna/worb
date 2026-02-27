@@ -62,10 +62,13 @@
         <div id="console" class="tab-content">
             <div class="console-container">
                 <div class="console-editor">
-                    <textarea id="sql-input" spellcheck="false">-- engine: {{.DBEngine}}
+                    <div class="sql-editor-wrap">
+                        <pre id="sql-highlight" aria-hidden="true"></pre>
+                        <textarea id="sql-input" spellcheck="false">-- engine: {{.DBEngine}}
 SELECT step, data FROM history
 WHERE run_id = '{{.Run.ID}}'
 ORDER BY step LIMIT 20</textarea>
+                    </div>
                     <div class="console-actions">
                         <button id="run-query-btn" onclick="runQuery()">Run Query</button>
                         <span id="query-status" class="query-status"></span>
@@ -511,6 +514,55 @@ ORDER BY step LIMIT 20</textarea>
         container.textContent = logs.join('\n');
     }
 
+    const SQL_KEYWORDS = /\b(SELECT|FROM|WHERE|ORDER|BY|LIMIT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|INTO|VALUES|SET|AND|OR|NOT|IN|IS|NULL|AS|ON|JOIN|LEFT|RIGHT|INNER|OUTER|GROUP|HAVING|UNION|ALL|DISTINCT|CASE|WHEN|THEN|ELSE|END|EXISTS|BETWEEN|LIKE|INDEX|PRIMARY|KEY|DEFAULT|REFERENCES|IF|COUNT|SUM|AVG|MIN|MAX|DESC|ASC|CAST|VARCHAR|TEXT|INTEGER|TIMESTAMP|JSON|UNIQUE|OFFSET)\b/gi;
+
+    function highlightSQL(text) {
+        let html = text
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/(--.*)/gm, '<span class="sql-comment">$1</span>')
+            .replace(/('(?:[^'\\]|\\.)*')/g, '<span class="sql-string">$1</span>')
+            .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="sql-number">$1</span>')
+            .replace(SQL_KEYWORDS, '<span class="sql-keyword">$1</span>');
+        return html + '\n';
+    }
+
+    function syncHighlight() {
+        const textarea = document.getElementById('sql-input');
+        const pre = document.getElementById('sql-highlight');
+        pre.innerHTML = highlightSQL(textarea.value);
+        pre.scrollTop = textarea.scrollTop;
+        pre.scrollLeft = textarea.scrollLeft;
+    }
+
+    const sqlInput = document.getElementById('sql-input');
+    sqlInput.addEventListener('input', syncHighlight);
+    sqlInput.addEventListener('scroll', () => {
+        const pre = document.getElementById('sql-highlight');
+        pre.scrollTop = sqlInput.scrollTop;
+        pre.scrollLeft = sqlInput.scrollLeft;
+    });
+    syncHighlight();
+
+    function formatCellValue(val) {
+        if (val === null) return '<span class="null-val">NULL</span>';
+        const s = String(val);
+        if ((s.startsWith('{') || s.startsWith('[')) && s.length > 2) {
+            try {
+                const obj = JSON.parse(s);
+                const pretty = JSON.stringify(obj, null, 2);
+                const html = pretty
+                    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                    .replace(/"([^"]+)":/g, '<span class="json-key">"$1"</span>:')
+                    .replace(/: "((?:[^"\\]|\\.)*)"/g, ': <span class="json-string">"$1"</span>')
+                    .replace(/: (-?\d+\.?\d*(?:[eE][+-]?\d+)?)/g, ': <span class="json-number">$1</span>')
+                    .replace(/: (true|false)/g, ': <span class="json-bool">$1</span>')
+                    .replace(/: (null)/g, ': <span class="json-null">$1</span>');
+                return '<pre class="json-cell">' + html + '</pre>';
+            } catch {}
+        }
+        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
     function toggleWrap() {
         const wrap = document.getElementById('query-results');
         const btn = document.getElementById('wrap-toggle-btn');
@@ -565,8 +617,7 @@ ORDER BY step LIMIT 20</textarea>
             for (const row of data.rows) {
                 html += '<tr>';
                 for (const val of row) {
-                    const display = val === null ? '<span class="null-val">NULL</span>' : String(val);
-                    html += `<td>${display}</td>`;
+                    html += `<td>${formatCellValue(val)}</td>`;
                 }
                 html += '</tr>';
             }

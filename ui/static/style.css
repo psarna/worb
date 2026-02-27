@@ -236,24 +236,54 @@ table tr:hover { background: rgba(255,255,255,0.02); }
     gap: 8px;
 }
 
-#sql-input {
-    background: var(--surface);
-    color: var(--text);
+.sql-editor-wrap {
+    position: relative;
     border: 1px solid var(--border);
     border-radius: 6px;
-    padding: 12px;
+    background: var(--surface);
+}
+
+.sql-editor-wrap:focus-within {
+    border-color: var(--accent);
+}
+
+#sql-highlight, #sql-input {
     font-family: 'SF Mono', 'Fira Code', monospace;
     font-size: 13px;
     line-height: 1.5;
-    min-height: 120px;
-    resize: vertical;
-    outline: none;
+    padding: 12px;
+    margin: 0;
+    border: none;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow: auto;
     tab-size: 2;
 }
 
-#sql-input:focus {
-    border-color: var(--accent);
+#sql-highlight {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    color: var(--text);
+    background: transparent;
 }
+
+#sql-input {
+    position: relative;
+    width: 100%;
+    min-height: 120px;
+    resize: vertical;
+    outline: none;
+    background: transparent;
+    color: transparent;
+    caret-color: var(--text);
+    -webkit-text-fill-color: transparent;
+}
+
+.sql-keyword { color: #ff7b72; }
+.sql-string { color: #a5d6ff; }
+.sql-number { color: #79c0ff; }
+.sql-comment { color: #8b949e; font-style: italic; }
 
 .console-actions {
     display: flex;
@@ -345,3 +375,19 @@ table tr:hover { background: rgba(255,255,255,0.02); }
 }
 
 .null-val { color: var(--text-secondary); font-style: italic; }
+
+.json-cell {
+    margin: 0;
+    padding: 0;
+    font-size: 12px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+    background: none;
+}
+
+.json-key { color: #ff7b72; }
+.json-string { color: #a5d6ff; }
+.json-number { color: #79c0ff; }
+.json-bool { color: #d2a8ff; }
+.json-null { color: #8b949e; font-style: italic; }
