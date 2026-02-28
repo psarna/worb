@@ -39,10 +39,24 @@ Then visit `http://localhost:8080` to see the run with metrics charts.
 Run the example scripts in the `examples/` directory to see how things work:
 
 ```bash
-WANDB_BASE_URL=http://localhost:8080 python examples/complex.py
-WANDB_BASE_URL=http://localhost:8080 python examples/histogram.py
-WANDB_BASE_URL=http://localhost:8080 python examples/out_of_order.py
+WANDB_BASE_URL=http://localhost:8080 uv run --no-project --with wandb python examples/complex.py
+WANDB_BASE_URL=http://localhost:8080 uv run --no-project --with wandb python examples/histogram.py
+WANDB_BASE_URL=http://localhost:8080 uv run --no-project --with wandb python examples/out_of_order.py
 ```
+
+## Benchmark
+
+Stress-test worb by simulating a 650B MoE LLM training run on 10,240 GPUs, logging ~120-8,300 metrics per step (per-layer norms, per-expert utilization, per-node GPU stats):
+
+```bash
+# quick test (50 steps, small cluster)
+uv run --no-project --with wandb python examples/bench_llm.py --steps 50 --num-nodes 10
+
+# full stress test (50k steps, 1280 nodes)
+uv run --no-project --with wandb python examples/bench_llm.py
+```
+
+See `python examples/bench_llm.py --help` for all options.
 
 ## Docker
 
