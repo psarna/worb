@@ -500,3 +500,105 @@ table tr:hover { background: rgba(255,255,255,0.02); }
 .json-number { color: #79c0ff; }
 .json-bool { color: #d2a8ff; }
 .json-null { color: #8b949e; font-style: italic; }
+
+.category-section { margin-bottom: 24px; }
+
+.category-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    cursor: pointer;
+    user-select: none;
+}
+
+.category-header:hover { opacity: 0.8; }
+
+.category-toggle {
+    width: 16px;
+    height: 16px;
+    color: var(--text-secondary);
+    transition: transform 0.15s;
+    flex-shrink: 0;
+}
+
+.category-header.collapsed .category-toggle {
+    transform: rotate(-90deg);
+}
+
+.category-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.category-count {
+    background: var(--border);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 0 6px;
+    border-radius: 10px;
+}
+
+.category-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+    gap: 16px;
+}
+
+.category-charts.hidden { display: none; }
+
+.heatmap-container {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+}
+
+.heatmap-container:hover { border-color: #58a6ff; }
+
+.heatmap-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.heatmap-title { font-size: 14px; color: var(--text-secondary); }
+
+.heatmap-wrap {
+    position: relative;
+    width: 100%;
+    height: 200px;
+}
+
+.heatmap-wrap canvas {
+    width: 100%;
+    height: 100%;
+}
+
+.heatmap-axis-label {
+    position: absolute;
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.heatmap-axis-label.x-label { bottom: -16px; left: 50%; transform: translateX(-50%); }
+
+.heatmap-legend {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 4px;
+    font-size: 10px;
+    color: var(--text-secondary);
+}
+
+.heatmap-legend canvas {
+    height: 8px;
+    width: 80px;
+    border-radius: 2px;
+}

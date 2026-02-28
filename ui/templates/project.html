@@ -34,7 +34,7 @@
                     <div class="sidebar-header">Runs <span class="sidebar-count" id="run-count">0</span><button class="sidebar-collapse" id="sidebar-collapse" title="Hide runs panel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg></button></div>
                     <div class="sidebar-runs" id="sidebar-runs"></div>
                 </div>
-                <div class="chart-grid" id="chart-grid"></div>
+                <div id="chart-grid" style="flex:1;min-width:0"></div>
             </div>
             <div class="empty-state" id="no-charts" style="display:none;">No metrics logged yet.</div>
         </div>
@@ -368,41 +368,98 @@
             if (runName) runNames[runID] = runName;
         }
 
+        const collapsedCategories = new Set();
+        const categoryElements = {};
+
+        function getCategoryAndMetric(key) {
+            const idx = key.indexOf('/');
+            if (idx === -1) return ['Charts', key];
+            return [key.substring(0, idx), key];
+        }
+
+        function toggleCategory(cat) {
+            const el = categoryElements[cat];
+            if (!el) return;
+            if (collapsedCategories.has(cat)) {
+                collapsedCategories.delete(cat);
+                el.header.classList.remove('collapsed');
+                el.charts.classList.remove('hidden');
+            } else {
+                collapsedCategories.add(cat);
+                el.header.classList.add('collapsed');
+                el.charts.classList.add('hidden');
+            }
+        }
+
+        function ensureCategory(cat, count) {
+            if (categoryElements[cat]) {
+                categoryElements[cat].countEl.textContent = count;
+                return categoryElements[cat];
+            }
+            const section = document.createElement('div');
+            section.className = 'category-section';
+            const header = document.createElement('div');
+            header.className = 'category-header' + (collapsedCategories.has(cat) ? ' collapsed' : '');
+            header.innerHTML = `<svg class="category-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg><span class="category-name">${cat}</span><span class="category-count">${count}</span>`;
+            header.addEventListener('click', () => toggleCategory(cat));
+            const chartsDiv = document.createElement('div');
+            chartsDiv.className = 'category-charts';
+            section.appendChild(header);
+            section.appendChild(chartsDiv);
+            grid.appendChild(section);
+            categoryElements[cat] = { section, header, charts: chartsDiv, countEl: header.querySelector('.category-count') };
+            return categoryElements[cat];
+        }
+
         function render() {
             const sortedKeys = Object.keys(metrics).sort();
+            const categories = {};
             for (const key of sortedKeys) {
-                const runDatasets = metrics[key];
-                if (allCharts[key]) {
-                    // update existing
-                    const chart = allCharts[key];
-                    const allSteps = new Set();
-                    const dsArr = runOrder.filter(rid => runDatasets[rid]?.length).map((runID, idx) => {
-                        const points = runDatasets[runID];
-                        const data = points.map(p => ({ x: p.step, y: p.value }));
-                        for (const p of data) allSteps.add(p.x);
-                        return {
-                            runID,
-                            label: points[0]?.runName || runID.slice(0, 8),
-                            data,
-                            borderColor: runColors[runID],
-                            backgroundColor: runOrder.length > 1 ? 'transparent' : runColors[runID] + '1a',
-                            borderWidth: 1.5,
-                            pointRadius: 0,
-                            tension: 0.1,
-                            fill: runOrder.length <= 1,
-                            hidden: hiddenRuns.has(runID),
-                        };
-                    });
-                    chart.data.labels = [...allSteps].sort((a, b) => a - b);
-                    chart.data.datasets = dsArr;
-                    chart.update('none');
-                } else {
-                    allCharts[key] = createChart(grid, key, runDatasets, runOrder.filter(rid => runDatasets[rid]?.length), runColors);
-                }
+                const [cat] = getCategoryAndMetric(key);
+                if (!categories[cat]) categories[cat] = [];
+                categories[cat].push(key);
             }
-            for (const key of sortedKeys) {
-                const div = allCharts[key]?.canvas?.closest('.chart-container');
-                if (div) grid.appendChild(div);
+
+            const catOrder = Object.keys(categories).sort((a, b) => {
+                if (a === 'Charts') return -1;
+                if (b === 'Charts') return 1;
+                return a.localeCompare(b);
+            });
+
+            for (const cat of catOrder) {
+                const keys = categories[cat];
+                const catEl = ensureCategory(cat, keys.length);
+                for (const key of keys) {
+                    const runDatasets = metrics[key];
+                    if (allCharts[key]) {
+                        const chart = allCharts[key];
+                        const allSteps = new Set();
+                        const dsArr = runOrder.filter(rid => runDatasets[rid]?.length).map((runID, idx) => {
+                            const points = runDatasets[runID];
+                            const data = points.map(p => ({ x: p.step, y: p.value }));
+                            for (const p of data) allSteps.add(p.x);
+                            return {
+                                runID,
+                                label: points[0]?.runName || runID.slice(0, 8),
+                                data,
+                                borderColor: runColors[runID],
+                                backgroundColor: runOrder.length > 1 ? 'transparent' : runColors[runID] + '1a',
+                                borderWidth: 1.5,
+                                pointRadius: 0,
+                                tension: 0.1,
+                                fill: runOrder.length <= 1,
+                                hidden: hiddenRuns.has(runID),
+                            };
+                        });
+                        chart.data.labels = [...allSteps].sort((a, b) => a - b);
+                        chart.data.datasets = dsArr;
+                        chart.update('none');
+                    } else {
+                        allCharts[key] = createChart(catEl.charts, key, runDatasets, runOrder.filter(rid => runDatasets[rid]?.length), runColors);
+                    }
+                    const div = allCharts[key]?.canvas?.closest('.chart-container');
+                    if (div) catEl.charts.appendChild(div);
+                }
             }
             updateSidebar(runOrder, runColors);
         }

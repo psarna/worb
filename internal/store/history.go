@@ -188,6 +188,63 @@ func (db *DB) StreamProjectHistoryScalars(projectID string, emit func(ProjectSca
 	return rows.Err()
 }
 
+type HistogramPoint struct {
+	Key    string    `json:"k"`
+	Step   float64   `json:"s"`
+	Bins   []float64 `json:"b"`
+	Values []float64 `json:"v"`
+}
+
+func (db *DB) StreamHistoryHistograms(runID string, emit func(HistogramPoint) error) error {
+	rows, err := db.Query(fmt.Sprintf("SELECT step, %s FROM history WHERE run_id = ? ORDER BY step", db.castJSON("data")), runID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var step int
+		var data string
+		if err := rows.Scan(&step, &data); err != nil {
+			return err
+		}
+
+		var obj map[string]json.RawMessage
+		if json.Unmarshal([]byte(data), &obj) != nil {
+			continue
+		}
+
+		xVal := float64(step)
+		if raw, ok := obj["_step"]; ok {
+			var v float64
+			if json.Unmarshal(raw, &v) == nil {
+				xVal = v
+			}
+		}
+
+		for key, raw := range obj {
+			if len(key) > 0 && key[0] == '_' || key == "step" {
+				continue
+			}
+			var histObj struct {
+				Type   string    `json:"_type"`
+				Bins   []float64 `json:"bins"`
+				Values []float64 `json:"values"`
+			}
+			if json.Unmarshal(raw, &histObj) != nil {
+				continue
+			}
+			if histObj.Type != "histogram" || len(histObj.Bins) < 2 || len(histObj.Values) == 0 {
+				continue
+			}
+			if err := emit(HistogramPoint{Key: key, Step: xVal, Bins: histObj.Bins, Values: histObj.Values}); err != nil {
+				return err
+			}
+		}
+	}
+	return rows.Err()
+}
+
 func (db *DB) UpdateRunSummary(runID string, summary json.RawMessage) error {
 	_, err := db.Exec("UPDATE runs SET summary = ?, updated_at = current_timestamp WHERE id = ?", string(summary), runID)
 	return err

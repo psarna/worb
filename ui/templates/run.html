@@ -43,7 +43,7 @@
         </div>
 
         <div id="charts" class="tab-content active">
-            <div class="chart-grid" id="chart-grid"></div>
+            <div id="chart-grid"></div>
             <div class="empty-state" id="no-charts" style="display:none;">No metrics logged yet.</div>
         </div>
 
@@ -414,34 +414,95 @@ ORDER BY step LIMIT 20</textarea>
                 delete allCharts[key];
             }
             grid.innerHTML = '';
+            for (const key of Object.keys(categoryElements)) delete categoryElements[key];
+        }
+
+        const collapsedCategories = new Set();
+        const categoryElements = {};
+
+        function getCategoryAndMetric(key) {
+            const idx = key.indexOf('/');
+            if (idx === -1) return ['Charts', key];
+            return [key.substring(0, idx), key];
+        }
+
+        function toggleCategory(cat) {
+            const el = categoryElements[cat];
+            if (!el) return;
+            if (collapsedCategories.has(cat)) {
+                collapsedCategories.delete(cat);
+                el.header.classList.remove('collapsed');
+                el.charts.classList.remove('hidden');
+            } else {
+                collapsedCategories.add(cat);
+                el.header.classList.add('collapsed');
+                el.charts.classList.add('hidden');
+            }
+        }
+
+        function ensureCategory(cat, count) {
+            if (categoryElements[cat]) {
+                categoryElements[cat].countEl.textContent = count;
+                return categoryElements[cat];
+            }
+            const section = document.createElement('div');
+            section.className = 'category-section';
+            section.dataset.cat = cat;
+            const header = document.createElement('div');
+            header.className = 'category-header' + (collapsedCategories.has(cat) ? ' collapsed' : '');
+            header.innerHTML = `<svg class="category-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg><span class="category-name">${cat}</span><span class="category-count">${count}</span>`;
+            header.addEventListener('click', () => toggleCategory(cat));
+            const chartsDiv = document.createElement('div');
+            chartsDiv.className = 'category-charts' + (collapsedCategories.has(cat) ? ' hidden' : '');
+            section.appendChild(header);
+            section.appendChild(chartsDiv);
+            grid.appendChild(section);
+            categoryElements[cat] = { section, header, charts: chartsDiv, countEl: header.querySelector('.category-count') };
+            return categoryElements[cat];
         }
 
         function render() {
             const sortedKeys = Object.keys(metrics).sort();
+            const categories = {};
             for (const key of sortedKeys) {
-                const points = dedupeSorted(metrics[key]);
-                const needsBar = points.length === 1;
-                if (allCharts[key]) {
-                    const isBar = allCharts[key].config.type === 'bar';
-                    if (isBar !== needsBar) {
-                        const oldDiv = allCharts[key].canvas.closest('.chart-container');
-                        everyChart.delete(allCharts[key]);
-                        allCharts[key].destroy();
-                        if (oldDiv) oldDiv.remove();
-                        allCharts[key] = createChart(grid, key, points);
+                const [cat] = getCategoryAndMetric(key);
+                if (!categories[cat]) categories[cat] = [];
+                categories[cat].push(key);
+            }
+
+            const catOrder = Object.keys(categories).sort((a, b) => {
+                if (a === 'Charts') return -1;
+                if (b === 'Charts') return 1;
+                return a.localeCompare(b);
+            });
+
+            for (const cat of catOrder) {
+                const keys = categories[cat];
+                const catEl = ensureCategory(cat, keys.length);
+                for (const key of keys) {
+                    const points = dedupeSorted(metrics[key]);
+                    const needsBar = points.length === 1;
+                    if (allCharts[key]) {
+                        const isBar = allCharts[key].config.type === 'bar';
+                        if (isBar !== needsBar) {
+                            const oldDiv = allCharts[key].canvas.closest('.chart-container');
+                            everyChart.delete(allCharts[key]);
+                            allCharts[key].destroy();
+                            if (oldDiv) oldDiv.remove();
+                            allCharts[key] = createChart(catEl.charts, key, points);
+                        } else {
+                            allCharts[key].data.labels = needsBar ? [key.split('/').pop().split('-').pop()] : points.map(p => p.step);
+                            allCharts[key].data.datasets[0].data = points.map(p => p.value);
+                            allCharts[key].update('none');
+                        }
                     } else {
-                        allCharts[key].data.labels = needsBar ? [key.split('/').pop().split('-').pop()] : points.map(p => p.step);
-                        allCharts[key].data.datasets[0].data = points.map(p => p.value);
-                        allCharts[key].update('none');
+                        allCharts[key] = createChart(catEl.charts, key, points);
                     }
-                } else {
-                    allCharts[key] = createChart(grid, key, points);
+                    const div = allCharts[key]?.canvas?.closest('.chart-container');
+                    if (div) catEl.charts.appendChild(div);
                 }
             }
-            for (const key of sortedKeys) {
-                const div = allCharts[key]?.canvas?.closest('.chart-container');
-                if (div) grid.appendChild(div);
-            }
+
             if (!hasCollapsible) {
                 for (const key of sortedKeys) {
                     const pts = metrics[key];
@@ -687,7 +748,185 @@ ORDER BY step LIMIT 20</textarea>
         }
     });
 
+    function heatmapColor(t) {
+        const r = Math.round(13 + t * 50);
+        const g = Math.round(17 + t * 100);
+        const b = Math.round(34 + t * 221);
+        return `rgb(${r},${g},${b})`;
+    }
+
+    function renderHeatmap(container, key, histData) {
+        const steps = histData.map(h => h.step);
+        const allBins = histData[0].bins;
+        const numBins = allBins.length - 1;
+
+        const wrap = container.querySelector('.heatmap-wrap');
+        const canvas = wrap.querySelector('canvas');
+        const rect = wrap.getBoundingClientRect();
+        const W = rect.width || 400;
+        const H = rect.height || 200;
+        const padLeft = 40;
+        const padBottom = 20;
+        const padRight = 4;
+        const padTop = 4;
+        canvas.width = W * window.devicePixelRatio;
+        canvas.height = H * window.devicePixelRatio;
+        const ctx = canvas.getContext('2d');
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+        let maxVal = 0;
+        for (const h of histData) {
+            for (const v of h.values) {
+                if (v > maxVal) maxVal = v;
+            }
+        }
+        if (maxVal === 0) maxVal = 1;
+
+        const plotW = W - padLeft - padRight;
+        const plotH = H - padTop - padBottom;
+        const colW = plotW / histData.length;
+        const rowH = plotH / numBins;
+
+        ctx.fillStyle = '#0d1117';
+        ctx.fillRect(0, 0, W, H);
+
+        for (let col = 0; col < histData.length; col++) {
+            const vals = histData[col].values;
+            for (let row = 0; row < numBins; row++) {
+                const t = vals[row] / maxVal;
+                ctx.fillStyle = heatmapColor(t);
+                const x = padLeft + col * colW;
+                const y = padTop + (numBins - 1 - row) * rowH;
+                ctx.fillRect(x, y, Math.ceil(colW), Math.ceil(rowH));
+            }
+        }
+
+        ctx.fillStyle = '#8b949e';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        const xTicks = Math.min(5, steps.length);
+        for (let i = 0; i < xTicks; i++) {
+            const idx = Math.round(i * (steps.length - 1) / (xTicks - 1 || 1));
+            const x = padLeft + (idx + 0.5) * colW;
+            const label = steps[idx] >= 1000 ? (steps[idx]/1000).toFixed(0) + 'k' : String(Math.round(steps[idx]));
+            ctx.fillText(label, x, H - 2);
+        }
+
+        ctx.textAlign = 'right';
+        const yTicks = Math.min(5, numBins);
+        for (let i = 0; i < yTicks; i++) {
+            const binIdx = Math.round(i * (numBins - 1) / (yTicks - 1 || 1));
+            const binCenter = (allBins[binIdx] + allBins[binIdx + 1]) / 2;
+            const y = padTop + (numBins - 1 - binIdx) * rowH + rowH / 2;
+            ctx.fillText(binCenter.toFixed(2), padLeft - 3, y + 3);
+        }
+
+        ctx.fillText('Step', padLeft + plotW / 2 + 20, H - 2);
+    }
+
+    async function loadHistograms() {
+        const grid = document.getElementById('chart-grid');
+        const histMetrics = {};
+
+        const resp = await fetch(`/api/runs/${runID}/histograms`);
+        const text = await resp.text();
+        if (!text.trim()) return;
+
+        for (const line of text.split('\n')) {
+            if (!line) continue;
+            const p = JSON.parse(line);
+            if (!histMetrics[p.k]) histMetrics[p.k] = [];
+            histMetrics[p.k].push({ step: p.s, bins: p.b, values: p.v });
+        }
+
+        const sortedKeys = Object.keys(histMetrics).sort();
+        if (sortedKeys.length === 0) return;
+
+        const categories = {};
+        for (const key of sortedKeys) {
+            const idx = key.indexOf('/');
+            const cat = idx === -1 ? 'Charts' : key.substring(0, idx);
+            if (!categories[cat]) categories[cat] = [];
+            categories[cat].push(key);
+        }
+
+        const catOrder = Object.keys(categories).sort((a, b) => {
+            if (a === 'Charts') return -1;
+            if (b === 'Charts') return 1;
+            return a.localeCompare(b);
+        });
+
+        for (const cat of catOrder) {
+            const keys = categories[cat];
+            let section = grid.querySelector(`.category-section[data-cat="${CSS.escape(cat)}"]`);
+            let chartsDiv;
+            if (section) {
+                chartsDiv = section.querySelector('.category-charts');
+                const countEl = section.querySelector('.category-count');
+                const existing = parseInt(countEl.textContent) || 0;
+                countEl.textContent = existing + keys.length;
+            } else {
+                section = document.createElement('div');
+                section.className = 'category-section';
+                section.dataset.cat = cat;
+                const header = document.createElement('div');
+                header.className = 'category-header';
+                header.innerHTML = `<svg class="category-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg><span class="category-name">${cat}</span><span class="category-count">${keys.length}</span>`;
+                chartsDiv = document.createElement('div');
+                chartsDiv.className = 'category-charts';
+                section.appendChild(header);
+                section.appendChild(chartsDiv);
+
+                const firstExisting = grid.querySelector('.category-section');
+                if (cat === 'Charts' && firstExisting) {
+                    grid.insertBefore(section, firstExisting);
+                } else {
+                    grid.appendChild(section);
+                }
+
+                header.addEventListener('click', () => {
+                    header.classList.toggle('collapsed');
+                    chartsDiv.classList.toggle('hidden');
+                });
+            }
+
+            for (const key of keys) {
+                const data = histMetrics[key].sort((a, b) => a.step - b.step);
+                const div = document.createElement('div');
+                div.className = 'heatmap-container';
+                div.innerHTML = `<div class="heatmap-header"><div class="heatmap-title">${key}</div></div><div class="heatmap-wrap"><canvas></canvas></div>`;
+                chartsDiv.appendChild(div);
+
+                requestAnimationFrame(() => renderHeatmap(div, key, data));
+
+                div.addEventListener('click', () => {
+                    if (expandedOverlay) return;
+                    const overlay = document.createElement('div');
+                    overlay.className = 'chart-overlay';
+                    const big = document.createElement('div');
+                    big.className = 'heatmap-container';
+                    big.style.width = '85vw';
+                    big.style.maxHeight = '80vh';
+                    big.style.cursor = 'default';
+                    big.style.borderColor = '#58a6ff';
+                    big.innerHTML = `<div class="heatmap-header"><div class="heatmap-title">${key}</div></div><div class="heatmap-wrap" style="height:400px"><canvas></canvas></div>`;
+                    overlay.appendChild(big);
+                    document.body.appendChild(overlay);
+                    expandedOverlay = overlay;
+                    requestAnimationFrame(() => renderHeatmap(big, key, data));
+                    overlay.addEventListener('click', (e) => {
+                        if (e.target === overlay) {
+                            overlay.remove();
+                            expandedOverlay = null;
+                        }
+                    });
+                });
+            }
+        }
+    }
+
     loadCharts();
+    loadHistograms();
     loadConfig();
     loadSummary();
     loadLogs();
