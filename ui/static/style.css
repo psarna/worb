@@ -23,7 +23,7 @@ body {
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-.container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+.container { max-width: 1400px; margin: 0 auto; padding: 0 24px; }
 
 header {
     background: var(--surface);
@@ -136,10 +136,119 @@ h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
     border-color: #58a6ff;
 }
 
+.charts-layout {
+    display: flex;
+    gap: 16px;
+}
+
+.runs-sidebar {
+    width: 220px;
+    min-width: 220px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 0;
+    align-self: flex-start;
+    position: sticky;
+    top: 16px;
+    display: none;
+}
+
+.runs-sidebar.visible { display: block; }
+
+.sidebar-toggle {
+    display: none;
+    align-self: flex-start;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 6px;
+    flex-shrink: 0;
+}
+
+.sidebar-toggle:hover { color: var(--text); border-color: var(--text-secondary); }
+.sidebar-toggle.visible { display: block; }
+
+.sidebar-collapse {
+    margin-left: auto;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 2px;
+    display: flex;
+    align-items: center;
+}
+
+.sidebar-collapse:hover { color: var(--text); }
+
+.sidebar-header {
+    padding: 0 12px 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.sidebar-count {
+    background: var(--border);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 500;
+    padding: 0 6px;
+    border-radius: 10px;
+}
+
+.sidebar-run {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text);
+    transition: background 0.1s;
+}
+
+.sidebar-run:hover { background: rgba(255,255,255,0.04); }
+
+.sidebar-run.hidden { opacity: 0.4; }
+
+.sidebar-eye {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    color: var(--text-secondary);
+}
+
+.sidebar-run:hover .sidebar-eye { color: var(--text); }
+
+.sidebar-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.sidebar-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+
 .chart-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
     gap: 16px;
+    flex: 1;
+    min-width: 0;
 }
 
 .chart-overlay {
