@@ -588,17 +588,26 @@ table tr:hover { background: rgba(255,255,255,0.02); }
 
 .heatmap-axis-label.x-label { bottom: -16px; left: 50%; transform: translateX(-50%); }
 
-.heatmap-legend {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin-top: 4px;
-    font-size: 10px;
-    color: var(--text-secondary);
+.heatmap-tooltip {
+    display: none;
+    position: absolute;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    pointer-events: none;
+    z-index: 10;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 
-.heatmap-legend canvas {
-    height: 8px;
-    width: 80px;
+.heatmap-tooltip canvas {
+    display: block;
     border-radius: 2px;
+}
+
+.heatmap-tooltip-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    text-align: center;
 }

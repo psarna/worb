@@ -787,41 +787,124 @@ ORDER BY step LIMIT 20</textarea>
         const colW = plotW / histData.length;
         const rowH = plotH / numBins;
 
-        ctx.fillStyle = '#0d1117';
-        ctx.fillRect(0, 0, W, H);
+        function drawBase() {
+            ctx.fillStyle = '#0d1117';
+            ctx.fillRect(0, 0, W, H);
 
-        for (let col = 0; col < histData.length; col++) {
-            const vals = histData[col].values;
-            for (let row = 0; row < numBins; row++) {
-                const t = vals[row] / maxVal;
-                ctx.fillStyle = heatmapColor(t);
-                const x = padLeft + col * colW;
-                const y = padTop + (numBins - 1 - row) * rowH;
-                ctx.fillRect(x, y, Math.ceil(colW), Math.ceil(rowH));
+            for (let col = 0; col < histData.length; col++) {
+                const vals = histData[col].values;
+                for (let row = 0; row < numBins; row++) {
+                    const t = vals[row] / maxVal;
+                    ctx.fillStyle = heatmapColor(t);
+                    const x = padLeft + col * colW;
+                    const y = padTop + (numBins - 1 - row) * rowH;
+                    ctx.fillRect(x, y, Math.ceil(colW), Math.ceil(rowH));
+                }
             }
+
+            ctx.fillStyle = '#8b949e';
+            ctx.font = '10px sans-serif';
+            ctx.textAlign = 'center';
+            const xTicks = Math.min(5, steps.length);
+            for (let i = 0; i < xTicks; i++) {
+                const idx = Math.round(i * (steps.length - 1) / (xTicks - 1 || 1));
+                const x = padLeft + (idx + 0.5) * colW;
+                const label = steps[idx] >= 1000 ? (steps[idx]/1000).toFixed(0) + 'k' : String(Math.round(steps[idx]));
+                ctx.fillText(label, x, H - 2);
+            }
+
+            ctx.textAlign = 'right';
+            const yTicks = Math.min(5, numBins);
+            for (let i = 0; i < yTicks; i++) {
+                const binIdx = Math.round(i * (numBins - 1) / (yTicks - 1 || 1));
+                const binCenter = (allBins[binIdx] + allBins[binIdx + 1]) / 2;
+                const y = padTop + (numBins - 1 - binIdx) * rowH + rowH / 2;
+                ctx.fillText(binCenter.toFixed(2), padLeft - 3, y + 3);
+            }
+
+            ctx.fillText('Step', padLeft + plotW / 2 + 20, H - 2);
         }
 
-        ctx.fillStyle = '#8b949e';
-        ctx.font = '10px sans-serif';
-        ctx.textAlign = 'center';
-        const xTicks = Math.min(5, steps.length);
-        for (let i = 0; i < xTicks; i++) {
-            const idx = Math.round(i * (steps.length - 1) / (xTicks - 1 || 1));
-            const x = padLeft + (idx + 0.5) * colW;
-            const label = steps[idx] >= 1000 ? (steps[idx]/1000).toFixed(0) + 'k' : String(Math.round(steps[idx]));
-            ctx.fillText(label, x, H - 2);
+        drawBase();
+
+        let tooltip = container.querySelector('.heatmap-tooltip');
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.className = 'heatmap-tooltip';
+            wrap.appendChild(tooltip);
         }
 
-        ctx.textAlign = 'right';
-        const yTicks = Math.min(5, numBins);
-        for (let i = 0; i < yTicks; i++) {
-            const binIdx = Math.round(i * (numBins - 1) / (yTicks - 1 || 1));
-            const binCenter = (allBins[binIdx] + allBins[binIdx + 1]) / 2;
-            const y = padTop + (numBins - 1 - binIdx) * rowH + rowH / 2;
-            ctx.fillText(binCenter.toFixed(2), padLeft - 3, y + 3);
-        }
+        canvas.addEventListener('mousemove', (e) => {
+            const cRect = canvas.getBoundingClientRect();
+            const mx = (e.clientX - cRect.left) * (W / cRect.width);
+            const colIdx = Math.floor((mx - padLeft) / colW);
+            if (colIdx < 0 || colIdx >= histData.length) {
+                tooltip.style.display = 'none';
+                drawBase();
+                return;
+            }
 
-        ctx.fillText('Step', padLeft + plotW / 2 + 20, H - 2);
+            drawBase();
+
+            const lineX = padLeft + (colIdx + 0.5) * colW;
+            ctx.strokeStyle = 'rgba(88,166,255,0.6)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(lineX, padTop);
+            ctx.lineTo(lineX, padTop + plotH);
+            ctx.stroke();
+
+            const hist = histData[colIdx];
+            const vals = hist.values;
+            const localMax = Math.max(...vals, 1);
+
+            const tw = 140;
+            const th = 80;
+            const barW = tw / vals.length;
+
+            let tipLeft = e.clientX - cRect.left + 12;
+            if (tipLeft + tw + 8 > cRect.width) tipLeft = e.clientX - cRect.left - tw - 12;
+            let tipTop = e.clientY - cRect.top - th - 10;
+            if (tipTop < 0) tipTop = e.clientY - cRect.top + 12;
+
+            tooltip.style.display = 'block';
+            tooltip.style.left = tipLeft + 'px';
+            tooltip.style.top = tipTop + 'px';
+            tooltip.style.width = tw + 'px';
+
+            const stepLabel = hist.step >= 1000 ? (hist.step/1000).toFixed(1) + 'k' : String(Math.round(hist.step));
+
+            let tipCanvas = tooltip.querySelector('canvas');
+            if (!tipCanvas) {
+                tipCanvas = document.createElement('canvas');
+                tipCanvas.width = tw * 2;
+                tipCanvas.height = 50 * 2;
+                tipCanvas.style.width = tw + 'px';
+                tipCanvas.style.height = '50px';
+                tooltip.innerHTML = '';
+                tooltip.appendChild(tipCanvas);
+                const label = document.createElement('div');
+                label.className = 'heatmap-tooltip-label';
+                tooltip.appendChild(label);
+            }
+
+            const tCtx = tipCanvas.getContext('2d');
+            tCtx.setTransform(2, 0, 0, 2, 0, 0);
+            tCtx.clearRect(0, 0, tw, 50);
+
+            for (let i = 0; i < vals.length; i++) {
+                const barH = (vals[i] / localMax) * 44;
+                tCtx.fillStyle = heatmapColor(vals[i] / maxVal);
+                tCtx.fillRect(i * barW, 48 - barH, Math.ceil(barW), barH);
+            }
+
+            tooltip.querySelector('.heatmap-tooltip-label').textContent = `Step: ${stepLabel}`;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            tooltip.style.display = 'none';
+            drawBase();
+        });
     }
 
     async function loadHistograms() {
