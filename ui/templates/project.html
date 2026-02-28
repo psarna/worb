@@ -148,8 +148,8 @@
             row.className = 'sidebar-run' + (hiddenRuns.has(runID) ? ' hidden' : '');
             row.dataset.run = runID;
             const name = runNames[runID] || runID.slice(0, 8);
-            row.innerHTML = `<div class="sidebar-eye">${hiddenRuns.has(runID) ? EYE_CLOSED : EYE_OPEN}</div><div class="sidebar-dot" style="background:${runColors[runID]}"></div><div class="sidebar-name" title="${name}">${name}</div>`;
-            row.addEventListener('click', () => toggleRun(runID));
+            row.innerHTML = `<div class="sidebar-eye">${hiddenRuns.has(runID) ? EYE_CLOSED : EYE_OPEN}</div><div class="sidebar-dot" style="background:${runColors[runID]}"></div><a class="sidebar-name" href="/runs/${runID}" title="${name}">${name}</a>`;
+            row.querySelector('.sidebar-eye').addEventListener('click', (e) => { e.stopPropagation(); toggleRun(runID); });
             container.appendChild(row);
         }
     }
