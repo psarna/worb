@@ -88,6 +88,7 @@ ORDER BY step LIMIT 20</textarea>
     const runID = "{{.Run.ID}}";
     const runState = "{{.Run.State}}";
     const runHistoryLineCount = {{.Run.HistoryLineCount}};
+    let loadingHistory = true;
 
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', () => {
@@ -190,6 +191,7 @@ ORDER BY step LIMIT 20</textarea>
             data: data,
             options: {
                 responsive: true,
+                parsing: false,
                 plugins: {
                     legend: { display: false },
                     zoom: {
@@ -206,7 +208,7 @@ ORDER BY step LIMIT 20</textarea>
                     },
                 },
                 scales: {
-                    x: { title: { display: true, text: 'step', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                    x: { type: 'linear', title: { display: true, text: 'step', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
                     y: { title: { display: true, text: key, color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
                 },
                 animation: false,
@@ -217,11 +219,14 @@ ORDER BY step LIMIT 20</textarea>
 
         if (!isBar && src.scales && src.scales.x) {
             const srcX = src.scales.x;
-            const fullMin = src.data.labels[0];
-            const fullMax = src.data.labels[src.data.labels.length - 1];
-            if (srcX.min !== fullMin || srcX.max !== fullMax) {
-                expandedChart.zoomScale('x', { min: srcX.min, max: srcX.max }, 'none');
-                resetBtn.style.display = 'inline-block';
+            const pts = src.data.datasets[0]?.data;
+            if (pts && pts.length > 0) {
+                const fullMin = pts[0].x;
+                const fullMax = pts[pts.length - 1].x;
+                if (srcX.min !== fullMin || srcX.max !== fullMax) {
+                    expandedChart.zoomScale('x', { min: srcX.min, max: srcX.max }, 'none');
+                    resetBtn.style.display = 'inline-block';
+                }
             }
         }
 
@@ -279,10 +284,9 @@ ORDER BY step LIMIT 20</textarea>
         } : {
             type: 'line',
             data: {
-                labels: points.map(p => p.step),
                 datasets: [{
                     label: key,
-                    data: points.map(p => p.value),
+                    data: points.map(p => ({ x: p.step, y: p.value })),
                     borderColor: '#58a6ff',
                     backgroundColor: 'rgba(88,166,255,0.1)',
                     borderWidth: 1.5,
@@ -293,6 +297,7 @@ ORDER BY step LIMIT 20</textarea>
             },
             options: {
                 responsive: true,
+                parsing: false,
                 plugins: {
                     legend: { display: false },
                     zoom: {
@@ -312,7 +317,11 @@ ORDER BY step LIMIT 20</textarea>
                     },
                 },
                 scales: {
-                    x: { title: { display: true, text: 'step', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
+                    x: {
+                        type: 'linear',
+                        ...(loadingHistory && runHistoryLineCount > 0 ? { suggestedMax: runHistoryLineCount } : {}),
+                        title: { display: true, text: 'step', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' },
+                    },
                     y: { title: { display: true, text: key, color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
                 },
                 animation: false,
@@ -491,8 +500,18 @@ ORDER BY step LIMIT 20</textarea>
                             if (oldDiv) oldDiv.remove();
                             allCharts[key] = createChart(catEl.charts, key, points);
                         } else {
-                            allCharts[key].data.labels = needsBar ? [key.split('/').pop().split('-').pop()] : points.map(p => p.step);
-                            allCharts[key].data.datasets[0].data = points.map(p => p.value);
+                            if (needsBar) {
+                                allCharts[key].data.labels = [key.split('/').pop().split('-').pop()];
+                                allCharts[key].data.datasets[0].data = points.map(p => p.value);
+                            } else {
+                                allCharts[key].data.datasets[0].data = points.map(p => ({ x: p.step, y: p.value }));
+                                const xScale = allCharts[key].options.scales.x;
+                                if (loadingHistory && runHistoryLineCount > 0) {
+                                    xScale.suggestedMax = runHistoryLineCount;
+                                } else {
+                                    delete xScale.suggestedMax;
+                                }
+                            }
                             allCharts[key].update('none');
                         }
                     } else {
@@ -573,6 +592,8 @@ ORDER BY step LIMIT 20</textarea>
             scheduleRender();
         }
         setCachedHistory(runID, runHistoryLineCount, fullText);
+        loadingHistory = false;
+        scheduleRender();
 
         if (Object.keys(metrics).length === 0) {
             document.getElementById('no-charts').style.display = 'block';

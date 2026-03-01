@@ -104,6 +104,8 @@
     let syncing = false;
     const hiddenRuns = new Set();
     const runNames = {};
+    let maxHistoryLineCount = 0;
+    let loadingHistory = true;
 
     const EYE_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
     const EYE_CLOSED = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
@@ -231,11 +233,14 @@
 
         if (src.scales && src.scales.x) {
             const srcX = src.scales.x;
-            const fullMin = src.data.labels[0];
-            const fullMax = src.data.labels[src.data.labels.length - 1];
-            if (srcX.min !== fullMin || srcX.max !== fullMax) {
-                expandedChart.zoomScale('x', { min: srcX.min, max: srcX.max }, 'none');
-                resetBtn.style.display = 'inline-block';
+            const labels = src.data.labels;
+            if (labels && labels.length > 0) {
+                const fullMin = labels[0];
+                const fullMax = labels[labels.length - 1];
+                if (srcX.min !== fullMin || srcX.max !== fullMax) {
+                    expandedChart.zoomScale('x', { min: srcX.min, max: srcX.max }, 'none');
+                    resetBtn.style.display = 'inline-block';
+                }
             }
         }
 
@@ -314,6 +319,7 @@
                 scales: {
                     x: {
                         type: 'linear',
+                        ...(loadingHistory && maxHistoryLineCount > 0 ? { suggestedMax: maxHistoryLineCount } : {}),
                         title: { display: true, text: 'step', color: '#8b949e' },
                         ticks: { color: '#8b949e' },
                         grid: { color: '#30363d' },
@@ -324,7 +330,7 @@
                         grid: { color: '#30363d' },
                     },
                 },
-                animation: { duration: 400 },
+                animation: loadingHistory ? false : { duration: 400 },
             }
         });
 
@@ -369,6 +375,8 @@
             runOrder.push(id);
             runColors[id] = RUN_COLORS[i % RUN_COLORS.length];
             runNames[id] = name;
+            const lc = r.HistoryLineCount || r.history_line_count || 0;
+            if (lc > maxHistoryLineCount) maxHistoryLineCount = lc;
         }
 
         updateSidebar(runOrder, runColors);
@@ -458,7 +466,13 @@
                         });
                         chart.data.labels = [...allSteps].sort((a, b) => a - b);
                         chart.data.datasets = dsArr;
-                        chart.update();
+                        const xScale = chart.options.scales.x;
+                        if (loadingHistory && maxHistoryLineCount > 0) {
+                            xScale.suggestedMax = maxHistoryLineCount;
+                        } else {
+                            delete xScale.suggestedMax;
+                        }
+                        chart.update(loadingHistory ? 'none' : undefined);
                     } else {
                         allCharts[key] = createChart(catEl.charts, key, runDatasets, runOrder.filter(rid => runDatasets[rid]?.length), runColors);
                     }
@@ -509,6 +523,11 @@
         }
 
         await Promise.all(runOrder.map(id => loadRunHistory(id)));
+        loadingHistory = false;
+        for (const chart of everyChart) {
+            chart.options.animation = { duration: 400 };
+        }
+        render();
 
         if (Object.keys(metrics).length === 0) {
             document.getElementById('no-charts').style.display = 'block';
