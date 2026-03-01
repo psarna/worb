@@ -3,7 +3,8 @@ import math
 import random
 import wandb
 
-os.environ.setdefault("WANDB_API_KEY", "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")
+os.environ.setdefault("WANDB_BASE_URL", "http://localhost:8080")
+os.environ.setdefault("WANDB_API_KEY", "dev-" + 40 * "f")
 
 run = wandb.init(project="complex-run", name="transformer-training", config={
     "learning_rate": 3e-4,

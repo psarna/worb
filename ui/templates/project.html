@@ -350,23 +350,28 @@
 
     async function loadCharts() {
         const grid = document.getElementById('chart-grid');
-        // metrics[metricKey][runID] = [{step, value, runName}, ...]
         const metrics = {};
         const runOrder = [];
-        const runSeen = new Set();
         const runColors = {};
         let renderPending = false;
-        let colorIdx = 0;
 
-        function ensureRun(runID, runName) {
-            if (!runSeen.has(runID)) {
-                runSeen.add(runID);
-                runOrder.push(runID);
-                runColors[runID] = RUN_COLORS[colorIdx % RUN_COLORS.length];
-                colorIdx++;
-            }
-            if (runName) runNames[runID] = runName;
+        const runsResp = await fetch(`/api/projects/${projectID}/runs`);
+        const runs = await runsResp.json();
+        if (!runs || runs.length === 0) {
+            document.getElementById('no-charts').style.display = 'block';
+            return;
         }
+
+        for (let i = 0; i < runs.length; i++) {
+            const r = runs[i];
+            const id = r.ID || r.id;
+            const name = r.DisplayName || r.display_name || r.Name || r.name || id.slice(0, 8);
+            runOrder.push(id);
+            runColors[id] = RUN_COLORS[i % RUN_COLORS.length];
+            runNames[id] = name;
+        }
+
+        updateSidebar(runOrder, runColors);
 
         const collapsedCategories = new Set();
         const categoryElements = {};
@@ -440,7 +445,7 @@
                             for (const p of data) allSteps.add(p.x);
                             return {
                                 runID,
-                                label: points[0]?.runName || runID.slice(0, 8),
+                                label: runNames[runID] || runID.slice(0, 8),
                                 data,
                                 borderColor: runColors[runID],
                                 backgroundColor: runOrder.length > 1 ? 'transparent' : runColors[runID] + '1a',
@@ -461,7 +466,6 @@
                     if (div) catEl.charts.appendChild(div);
                 }
             }
-            updateSidebar(runOrder, runColors);
         }
 
         function scheduleRender() {
@@ -473,35 +477,38 @@
             });
         }
 
-        const resp = await fetch(`/api/projects/${projectID}/history`);
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value, { stream: true });
-            buffer += chunk;
-            const lines = buffer.split('\n');
-            buffer = lines.pop();
-            for (const line of lines) {
-                if (!line) continue;
-                const p = JSON.parse(line);
-                ensureRun(p.r, p.n);
-                if (!metrics[p.k]) metrics[p.k] = {};
-                if (!metrics[p.k][p.r]) metrics[p.k][p.r] = [];
-                metrics[p.k][p.r].push({ step: p.s, value: p.v, runName: p.n });
+        async function loadRunHistory(runID) {
+            const resp = await fetch(`/api/runs/${runID}/history`);
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            const name = runNames[runID] || runID.slice(0, 8);
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value, { stream: true });
+                buffer += chunk;
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+                for (const line of lines) {
+                    if (!line) continue;
+                    const p = JSON.parse(line);
+                    if (!metrics[p.k]) metrics[p.k] = {};
+                    if (!metrics[p.k][runID]) metrics[p.k][runID] = [];
+                    metrics[p.k][runID].push({ step: p.s, value: p.v, runName: name });
+                }
+                scheduleRender();
             }
-            scheduleRender();
+            if (buffer.trim()) {
+                const p = JSON.parse(buffer);
+                if (!metrics[p.k]) metrics[p.k] = {};
+                if (!metrics[p.k][runID]) metrics[p.k][runID] = [];
+                metrics[p.k][runID].push({ step: p.s, value: p.v, runName: name });
+                scheduleRender();
+            }
         }
-        if (buffer.trim()) {
-            const p = JSON.parse(buffer);
-            ensureRun(p.r, p.n);
-            if (!metrics[p.k]) metrics[p.k] = {};
-            if (!metrics[p.k][p.r]) metrics[p.k][p.r] = [];
-            metrics[p.k][p.r].push({ step: p.s, value: p.v, runName: p.n });
-            scheduleRender();
-        }
+
+        await Promise.all(runOrder.map(id => loadRunHistory(id)));
 
         if (Object.keys(metrics).length === 0) {
             document.getElementById('no-charts').style.display = 'block';
