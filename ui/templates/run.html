@@ -349,42 +349,80 @@ ORDER BY step LIMIT 20</textarea>
         return chart;
     }
 
-    const CACHE_PREFIX = 'worb_history_';
+    const IDB_NAME = 'worb';
+    const IDB_STORE = 'history';
     const MAX_CACHE_ENTRIES = 20;
 
-    function getCachedHistory(id) {
+    function openIDB() {
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open(IDB_NAME, 1);
+            req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    function idbGet(db, key) {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(IDB_STORE, 'readonly');
+            const req = tx.objectStore(IDB_STORE).get(key);
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    function idbPut(db, key, value) {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(IDB_STORE, 'readwrite');
+            const req = tx.objectStore(IDB_STORE).put(value, key);
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    function idbGetAllKeys(db) {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(IDB_STORE, 'readonly');
+            const req = tx.objectStore(IDB_STORE).getAllKeys();
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    function idbDelete(db, key) {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(IDB_STORE, 'readwrite');
+            const req = tx.objectStore(IDB_STORE).delete(key);
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    async function getCachedHistory(id) {
         try {
-            const raw = localStorage.getItem(CACHE_PREFIX + id);
-            if (!raw) return null;
-            return JSON.parse(raw);
+            const db = await openIDB();
+            return await idbGet(db, id);
         } catch { return null; }
     }
 
-    function setCachedHistory(id, lineCount, ndjsonText) {
+    async function setCachedHistory(id, lineCount, ndjsonText) {
         try {
-            evictOldCacheEntries();
-            localStorage.setItem(CACHE_PREFIX + id, JSON.stringify({
-                lineCount: lineCount,
-                ts: Date.now(),
-                data: ndjsonText,
-            }));
-        } catch {}
-    }
-
-    function evictOldCacheEntries() {
-        const entries = [];
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key.startsWith(CACHE_PREFIX)) {
-                try {
-                    const val = JSON.parse(localStorage.getItem(key));
-                    entries.push({ key, ts: val.ts || 0 });
-                } catch { entries.push({ key, ts: 0 }); }
+            const db = await openIDB();
+            const keys = await idbGetAllKeys(db);
+            if (keys.length >= MAX_CACHE_ENTRIES) {
+                const entries = [];
+                for (const k of keys) {
+                    const val = await idbGet(db, k);
+                    entries.push({ key: k, ts: val?.ts || 0 });
+                }
+                entries.sort((a, b) => a.ts - b.ts);
+                while (entries.length >= MAX_CACHE_ENTRIES) {
+                    await idbDelete(db, entries.shift().key);
+                }
             }
-        }
-        entries.sort((a, b) => a.ts - b.ts);
-        while (entries.length >= MAX_CACHE_ENTRIES) {
-            localStorage.removeItem(entries.shift().key);
+            await idbPut(db, id, { lineCount, ts: Date.now(), data: ndjsonText });
+        } catch (e) {
+            console.warn('worb: failed to cache history:', e.name, e.message);
         }
     }
 
@@ -557,12 +595,22 @@ ORDER BY step LIMIT 20</textarea>
             }
         }
 
-        const cached = getCachedHistory(runID);
+        const cached = await getCachedHistory(runID);
         if (cached) {
             parseNdjson(cached.data);
             scheduleRender();
+            if (cached.lineCount === runHistoryLineCount) {
+                console.log('worb: cache hit, skipping fetch', {cachedLines: cached.lineCount, expected: runHistoryLineCount});
+                loadingHistory = false;
+                scheduleRender();
+                return;
+            }
+            console.log('worb: cache stale', {cachedLines: cached.lineCount, expected: runHistoryLineCount});
+        } else {
+            console.log('worb: no cache for', runID);
         }
 
+        for (const k in metrics) delete metrics[k];
         const resp = await fetch(`/api/runs/${runID}/history`);
         const reader = resp.body.getReader();
         const decoder = new TextDecoder();
@@ -591,7 +639,7 @@ ORDER BY step LIMIT 20</textarea>
             metrics[p.k].push({ step: p.s, value: p.v, index: p.i });
             scheduleRender();
         }
-        setCachedHistory(runID, runHistoryLineCount, fullText);
+        await setCachedHistory(runID, runHistoryLineCount, fullText);
         loadingHistory = false;
         scheduleRender();
 

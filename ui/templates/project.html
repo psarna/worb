@@ -72,6 +72,83 @@
     <script>
     const projectID = "{{.Project.ID}}";
 
+    const IDB_NAME = 'worb';
+    const IDB_STORE = 'history';
+    const MAX_CACHE_ENTRIES = 20;
+
+    function openIDB() {
+        return new Promise((resolve, reject) => {
+            const req = indexedDB.open(IDB_NAME, 1);
+            req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE);
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    function idbGet(db, key) {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(IDB_STORE, 'readonly');
+            const req = tx.objectStore(IDB_STORE).get(key);
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    function idbPut(db, key, value) {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(IDB_STORE, 'readwrite');
+            const req = tx.objectStore(IDB_STORE).put(value, key);
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    function idbGetAllKeys(db) {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(IDB_STORE, 'readonly');
+            const req = tx.objectStore(IDB_STORE).getAllKeys();
+            req.onsuccess = () => resolve(req.result);
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    function idbDelete(db, key) {
+        return new Promise((resolve, reject) => {
+            const tx = db.transaction(IDB_STORE, 'readwrite');
+            const req = tx.objectStore(IDB_STORE).delete(key);
+            req.onsuccess = () => resolve();
+            req.onerror = () => reject(req.error);
+        });
+    }
+
+    async function getCachedHistory(id) {
+        try {
+            const db = await openIDB();
+            return await idbGet(db, id);
+        } catch { return null; }
+    }
+
+    async function setCachedHistory(id, lineCount, ndjsonText) {
+        try {
+            const db = await openIDB();
+            const keys = await idbGetAllKeys(db);
+            if (keys.length >= MAX_CACHE_ENTRIES) {
+                const entries = [];
+                for (const k of keys) {
+                    const val = await idbGet(db, k);
+                    entries.push({ key: k, ts: val?.ts || 0 });
+                }
+                entries.sort((a, b) => a.ts - b.ts);
+                while (entries.length >= MAX_CACHE_ENTRIES) {
+                    await idbDelete(db, entries.shift().key);
+                }
+            }
+            await idbPut(db, id, { lineCount, ts: Date.now(), data: ndjsonText });
+        } catch (e) {
+            console.warn('worb: failed to cache history:', e.name, e.message);
+        }
+    }
+
     const RUN_COLORS = [
         '#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff',
         '#f778ba', '#79c0ff', '#56d364', '#e3b341', '#ff7b72',
@@ -359,6 +436,7 @@
         const metrics = {};
         const runOrder = [];
         const runColors = {};
+        const runLineCounts = {};
         let renderPending = false;
 
         const runsResp = await fetch(`/api/projects/${projectID}/runs`);
@@ -376,6 +454,7 @@
             runColors[id] = RUN_COLORS[i % RUN_COLORS.length];
             runNames[id] = name;
             const lc = r.HistoryLineCount || r.history_line_count || 0;
+            runLineCounts[id] = lc;
             if (lc > maxHistoryLineCount) maxHistoryLineCount = lc;
         }
 
@@ -491,16 +570,40 @@
             }, 300);
         }
 
+        function parseRunNdjson(runID, text) {
+            const name = runNames[runID] || runID.slice(0, 8);
+            for (const line of text.split('\n')) {
+                if (!line) continue;
+                const p = JSON.parse(line);
+                if (!metrics[p.k]) metrics[p.k] = {};
+                if (!metrics[p.k][runID]) metrics[p.k][runID] = [];
+                metrics[p.k][runID].push({ step: p.s, value: p.v, runName: name });
+            }
+        }
+
         async function loadRunHistory(runID) {
+            const expectedLines = runLineCounts[runID] || 0;
+            const cached = await getCachedHistory(runID);
+            if (cached) {
+                parseRunNdjson(runID, cached.data);
+                scheduleRender();
+                if (cached.lineCount === expectedLines) return;
+                for (const k in metrics) {
+                    if (metrics[k][runID]) delete metrics[k][runID];
+                }
+            }
+
+            const name = runNames[runID] || runID.slice(0, 8);
             const resp = await fetch(`/api/runs/${runID}/history`);
             const reader = resp.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
-            const name = runNames[runID] || runID.slice(0, 8);
+            let fullText = '';
             while (true) {
                 const { done, value } = await reader.read();
                 if (done) break;
                 const chunk = decoder.decode(value, { stream: true });
+                fullText += chunk;
                 buffer += chunk;
                 const lines = buffer.split('\n');
                 buffer = lines.pop();
@@ -514,12 +617,14 @@
                 scheduleRender();
             }
             if (buffer.trim()) {
+                fullText += '\n';
                 const p = JSON.parse(buffer);
                 if (!metrics[p.k]) metrics[p.k] = {};
                 if (!metrics[p.k][runID]) metrics[p.k][runID] = [];
                 metrics[p.k][runID].push({ step: p.s, value: p.v, runName: name });
                 scheduleRender();
             }
+            await setCachedHistory(runID, expectedLines, fullText);
         }
 
         await Promise.all(runOrder.map(id => loadRunHistory(id)));
