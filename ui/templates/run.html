@@ -135,9 +135,122 @@ ORDER BY step LIMIT 20</textarea>
         }
     };
 
+    const crosshairPlugin = {
+        id: 'crosshair',
+        afterDraw(chart) {
+            const xVal = chart._crosshairX;
+            if (xVal == null) return;
+            const xScale = chart.scales.x;
+            if (!xScale) return;
+            const px = xScale.getPixelForValue(xVal);
+            if (px < xScale.left || px > xScale.right) return;
+            const { ctx, chartArea } = chart;
+            ctx.save();
+            ctx.beginPath();
+            ctx.moveTo(px, chartArea.top);
+            ctx.lineTo(px, chartArea.bottom);
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(139,148,158,0.5)';
+            ctx.stroke();
+            for (const ds of chart.data.datasets) {
+                if (ds.hidden || !ds.data || ds.data.length === 0) continue;
+                let closest = ds.data[0], minDist = Math.abs((closest.x ?? 0) - xVal);
+                for (let i = 1; i < ds.data.length; i++) {
+                    const d = Math.abs((ds.data[i].x ?? 0) - xVal);
+                    if (d < minDist) { minDist = d; closest = ds.data[i]; }
+                }
+                if (closest.y == null) continue;
+                const yPx = chart.scales.y.getPixelForValue(closest.y);
+                ctx.beginPath();
+                ctx.arc(px, yPx, 4, 0, Math.PI * 2);
+                ctx.fillStyle = ds.borderColor || '#58a6ff';
+                ctx.fill();
+                ctx.strokeStyle = '#0d1117';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+    };
+    Chart.register(crosshairPlugin);
+
+    function formatVal(v) {
+        if (typeof v !== 'number') return String(v);
+        if (Number.isInteger(v)) return String(v);
+        const abs = Math.abs(v);
+        if (abs >= 1000) return v.toFixed(2);
+        if (abs >= 1) return v.toPrecision(5);
+        return v.toPrecision(4);
+    }
+
+    function showCrosshairTooltip(chart, xVal) {
+        const container = chart.canvas.closest('.chart-container');
+        if (!container) return;
+        let tip = container.querySelector('.crosshair-tooltip');
+        if (!tip) {
+            tip = document.createElement('div');
+            tip.className = 'crosshair-tooltip';
+            container.appendChild(tip);
+        }
+        const xScale = chart.scales.x;
+        const rows = [];
+        for (const ds of chart.data.datasets) {
+            if (ds.hidden || !ds.data || ds.data.length === 0) continue;
+            let closest = ds.data[0], minDist = Math.abs((closest.x ?? 0) - xVal);
+            for (let i = 1; i < ds.data.length; i++) {
+                const d = Math.abs((ds.data[i].x ?? 0) - xVal);
+                if (d < minDist) { minDist = d; closest = ds.data[i]; }
+            }
+            if (closest.y == null) continue;
+            const color = ds.borderColor || '#58a6ff';
+            const step = closest.x ?? 0;
+            const stepStr = Number.isInteger(step) ? String(step) : step.toFixed(1);
+            rows.push(`<span style="color:${color}"><b>${stepStr}:</b> ${formatVal(closest.y)}</span>`);
+        }
+        if (rows.length === 0) { tip.style.display = 'none'; return; }
+        tip.innerHTML = rows.join('<br>');
+        tip.style.display = '';
+        const px = xScale.getPixelForValue(xVal);
+        const tipW = tip.offsetWidth;
+        const canvasRect = chart.canvas.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        const canvasLeft = canvasRect.left - containerRect.left;
+        let left = canvasLeft + px - tipW / 2;
+        left = Math.max(4, Math.min(left, container.offsetWidth - tipW - 4));
+        tip.style.left = left + 'px';
+    }
+
+    function hideCrosshairTooltip(chart) {
+        const tip = chart.canvas.closest('.chart-container')?.querySelector('.crosshair-tooltip');
+        if (tip) tip.style.display = 'none';
+    }
+
     const allCharts = {};
     const everyChart = new Set();
     let syncing = false;
+    let crosshairSyncing = false;
+
+    function syncCrosshair(source, xVal) {
+        if (crosshairSyncing) return;
+        crosshairSyncing = true;
+        for (const c of everyChart) {
+            if (c === source || c.config.type === 'bar') continue;
+            c._crosshairX = xVal;
+            c.draw();
+            showCrosshairTooltip(c, xVal);
+        }
+        crosshairSyncing = false;
+    }
+
+    function clearCrosshair(source) {
+        for (const c of everyChart) {
+            if (c._crosshairX != null) {
+                c._crosshairX = null;
+                c.draw();
+                hideCrosshairTooltip(c);
+            }
+        }
+    }
 
     function syncZoom(source, min, max) {
         if (syncing) return;
@@ -249,6 +362,25 @@ ORDER BY step LIMIT 20</textarea>
             resetAllZoom();
         });
 
+        if (!isBar) {
+            const canvas = container.querySelector('canvas');
+            canvas.addEventListener('mousemove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const xPixel = e.clientX - rect.left;
+                const xVal = expandedChart.scales.x.getValueForPixel(xPixel);
+                if (xVal != null) {
+                    expandedChart._crosshairX = xVal;
+                    expandedChart.draw();
+                    showCrosshairTooltip(expandedChart, xVal);
+                }
+            });
+            canvas.addEventListener('mouseleave', () => {
+                expandedChart._crosshairX = null;
+                expandedChart.draw();
+                hideCrosshairTooltip(expandedChart);
+            });
+        }
+
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) {
                 everyChart.delete(expandedChart);
@@ -349,6 +481,27 @@ ORDER BY step LIMIT 20</textarea>
             e.stopPropagation();
             resetAllZoom();
         });
+
+        if (!singleValue) {
+            const canvas = div.querySelector('canvas');
+            canvas.addEventListener('mousemove', (e) => {
+                const rect = canvas.getBoundingClientRect();
+                const xPixel = e.clientX - rect.left;
+                const xVal = chart.scales.x.getValueForPixel(xPixel);
+                if (xVal != null) {
+                    chart._crosshairX = xVal;
+                    chart.draw();
+                    showCrosshairTooltip(chart, xVal);
+                    syncCrosshair(chart, xVal);
+                }
+            });
+            canvas.addEventListener('mouseleave', () => {
+                chart._crosshairX = null;
+                chart.draw();
+                hideCrosshairTooltip(chart);
+                clearCrosshair(chart);
+            });
+        }
 
         let mouseDownPos = null;
         div.addEventListener('mousedown', (e) => { mouseDownPos = { x: e.clientX, y: e.clientY }; });

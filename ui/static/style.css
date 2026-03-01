@@ -136,6 +136,7 @@ h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
 .config-table th { color: var(--text-secondary); font-weight: 500; width: 200px; }
 
 .chart-container {
+    position: relative;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -693,4 +694,20 @@ table tr:hover { background: rgba(255,255,255,0.02); }
     color: var(--text-secondary);
     margin-top: 4px;
     text-align: center;
+}
+
+.crosshair-tooltip {
+    position: absolute;
+    top: 6px;
+    pointer-events: none;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    line-height: 1.6;
+    white-space: nowrap;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
