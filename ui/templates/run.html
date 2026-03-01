@@ -43,6 +43,11 @@
         </div>
 
         <div id="charts" class="tab-content active">
+            <div class="charts-toolbar" id="charts-toolbar" style="display:none;">
+                <input type="text" class="chart-search" id="chart-search" placeholder="Filter metrics...">
+                <button class="expand-collapse-btn" id="expand-all-btn" onclick="expandAllCategories()">Expand All</button>
+                <button class="expand-collapse-btn" id="collapse-all-btn" onclick="collapseAllCategories()">Collapse All</button>
+            </div>
             <div id="chart-grid"></div>
             <div class="empty-state" id="no-charts" style="display:none;">No metrics logged yet.</div>
         </div>
@@ -429,6 +434,8 @@ ORDER BY step LIMIT 20</textarea>
     let showHistory = true;
     let hasCollapsible = false;
     let _rerenderAll = null;
+    let expandAllCategories = () => {};
+    let collapseAllCategories = () => {};
 
     function toggleHistoryView() {
         showHistory = !showHistory;
@@ -454,6 +461,9 @@ ORDER BY step LIMIT 20</textarea>
                 .sort((a, b) => a.step - b.step);
         }
 
+        const PAGE_SIZE = 12;
+        const AUTO_COLLAPSE_THRESHOLD = 50;
+
         function destroyAll() {
             for (const key of Object.keys(allCharts)) {
                 everyChart.delete(allCharts[key]);
@@ -466,11 +476,76 @@ ORDER BY step LIMIT 20</textarea>
 
         const collapsedCategories = new Set();
         const categoryElements = {};
+        let searchFilter = '';
+        const initializedCategories = new Set();
+
+        document.getElementById('chart-search').addEventListener('input', (e) => {
+            searchFilter = e.target.value.toLowerCase();
+            for (const cat of Object.keys(categoryElements)) {
+                categoryElements[cat].page = 0;
+            }
+            scheduleRender();
+        });
 
         function getCategoryAndMetric(key) {
             const idx = key.indexOf('/');
             if (idx === -1) return ['Charts', key];
             return [key.substring(0, idx), key];
+        }
+
+        function destroyCategoryCharts(cat) {
+            const catEl = categoryElements[cat];
+            if (!catEl) return;
+            for (const key of (catEl.renderedKeys || [])) {
+                if (allCharts[key]) {
+                    everyChart.delete(allCharts[key]);
+                    allCharts[key].destroy();
+                    delete allCharts[key];
+                }
+            }
+            catEl.charts.innerHTML = '';
+            catEl.renderedKeys = [];
+        }
+
+        function renderCategoryPage(cat) {
+            const catEl = categoryElements[cat];
+            if (!catEl || collapsedCategories.has(cat)) return;
+            const keys = catEl.keys;
+            if (!keys || keys.length === 0) return;
+
+            destroyCategoryCharts(cat);
+
+            const start = catEl.page * PAGE_SIZE;
+            const pageKeys = keys.slice(start, start + PAGE_SIZE);
+            catEl.renderedKeys = pageKeys;
+
+            for (const key of pageKeys) {
+                const points = dedupeSorted(metrics[key]);
+                allCharts[key] = createChart(catEl.charts, key, points);
+            }
+        }
+
+        function updatePageInfo(cat) {
+            const catEl = categoryElements[cat];
+            if (!catEl || !catEl.pageInfo) return;
+            const totalPages = Math.max(1, Math.ceil(catEl.keys.length / PAGE_SIZE));
+            if (catEl.keys.length <= PAGE_SIZE) {
+                catEl.pageInfo.style.display = 'none';
+            } else {
+                catEl.pageInfo.style.display = '';
+                catEl.pageInfo.querySelector('.page-text').textContent = `${catEl.page + 1} / ${totalPages}`;
+                catEl.pageInfo.querySelector('.page-prev').disabled = catEl.page === 0;
+                catEl.pageInfo.querySelector('.page-next').disabled = catEl.page >= totalPages - 1;
+            }
+        }
+
+        function changePage(cat, delta) {
+            const catEl = categoryElements[cat];
+            if (!catEl) return;
+            const totalPages = Math.max(1, Math.ceil(catEl.keys.length / PAGE_SIZE));
+            catEl.page = Math.max(0, Math.min(totalPages - 1, catEl.page + delta));
+            renderCategoryPage(cat);
+            updatePageInfo(cat);
         }
 
         function toggleCategory(cat) {
@@ -480,10 +555,12 @@ ORDER BY step LIMIT 20</textarea>
                 collapsedCategories.delete(cat);
                 el.header.classList.remove('collapsed');
                 el.charts.classList.remove('hidden');
+                renderCategoryPage(cat);
             } else {
                 collapsedCategories.add(cat);
                 el.header.classList.add('collapsed');
                 el.charts.classList.add('hidden');
+                destroyCategoryCharts(cat);
             }
         }
 
@@ -492,24 +569,51 @@ ORDER BY step LIMIT 20</textarea>
                 categoryElements[cat].countEl.textContent = count;
                 return categoryElements[cat];
             }
+            const shouldCollapse = count > AUTO_COLLAPSE_THRESHOLD && !initializedCategories.has(cat);
+            if (shouldCollapse) collapsedCategories.add(cat);
+            initializedCategories.add(cat);
+
             const section = document.createElement('div');
             section.className = 'category-section';
             section.dataset.cat = cat;
             const header = document.createElement('div');
             header.className = 'category-header' + (collapsedCategories.has(cat) ? ' collapsed' : '');
+
+            const pagination = document.createElement('div');
+            pagination.className = 'category-pagination';
+            pagination.innerHTML = `<button class="page-prev">&lsaquo;</button><span class="page-text">1 / 1</span><button class="page-next">&rsaquo;</button>`;
+            pagination.querySelector('.page-prev').addEventListener('click', (e) => { e.stopPropagation(); changePage(cat, -1); });
+            pagination.querySelector('.page-next').addEventListener('click', (e) => { e.stopPropagation(); changePage(cat, 1); });
+            pagination.style.display = 'none';
+
             header.innerHTML = `<svg class="category-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg><span class="category-name">${cat}</span><span class="category-count">${count}</span>`;
-            header.addEventListener('click', () => toggleCategory(cat));
+            header.appendChild(pagination);
+            header.addEventListener('click', (e) => {
+                if (e.target.closest('.category-pagination')) return;
+                toggleCategory(cat);
+            });
             const chartsDiv = document.createElement('div');
             chartsDiv.className = 'category-charts' + (collapsedCategories.has(cat) ? ' hidden' : '');
             section.appendChild(header);
             section.appendChild(chartsDiv);
             grid.appendChild(section);
-            categoryElements[cat] = { section, header, charts: chartsDiv, countEl: header.querySelector('.category-count') };
+            categoryElements[cat] = {
+                section, header, charts: chartsDiv,
+                countEl: header.querySelector('.category-count'),
+                pageInfo: pagination,
+                page: 0,
+                keys: [],
+                renderedKeys: [],
+            };
             return categoryElements[cat];
         }
 
         function render() {
-            const sortedKeys = Object.keys(metrics).sort();
+            let sortedKeys = Object.keys(metrics).sort();
+            if (searchFilter) {
+                sortedKeys = sortedKeys.filter(k => k.toLowerCase().includes(searchFilter));
+            }
+
             const categories = {};
             for (const key of sortedKeys) {
                 const [cat] = getCategoryAndMetric(key);
@@ -523,10 +627,48 @@ ORDER BY step LIMIT 20</textarea>
                 return a.localeCompare(b);
             });
 
+            if (sortedKeys.length > 0) {
+                document.getElementById('charts-toolbar').style.display = '';
+            }
+
+            // hide categories that no longer have keys (due to search filter)
+            for (const cat of Object.keys(categoryElements)) {
+                if (!categories[cat]) {
+                    categoryElements[cat].section.style.display = 'none';
+                }
+            }
+
             for (const cat of catOrder) {
                 const keys = categories[cat];
                 const catEl = ensureCategory(cat, keys.length);
-                for (const key of keys) {
+                catEl.section.style.display = '';
+                catEl.keys = keys;
+
+                // clamp page if keys changed
+                const totalPages = Math.max(1, Math.ceil(keys.length / PAGE_SIZE));
+                if (catEl.page >= totalPages) catEl.page = totalPages - 1;
+
+                updatePageInfo(cat);
+
+                if (collapsedCategories.has(cat)) continue;
+
+                const start = catEl.page * PAGE_SIZE;
+                const pageKeys = keys.slice(start, start + PAGE_SIZE);
+                const pageKeySet = new Set(pageKeys);
+
+                // destroy charts not on current page
+                for (const key of (catEl.renderedKeys || [])) {
+                    if (!pageKeySet.has(key) && allCharts[key]) {
+                        everyChart.delete(allCharts[key]);
+                        allCharts[key].destroy();
+                        delete allCharts[key];
+                        const div = document.getElementById('cc-' + key.replace(/[^a-zA-Z0-9]/g, '_'));
+                        if (div) div.remove();
+                    }
+                }
+
+                // create/update charts on current page
+                for (const key of pageKeys) {
                     const points = dedupeSorted(metrics[key]);
                     const needsBar = points.length === 1;
                     if (allCharts[key]) {
@@ -558,6 +700,7 @@ ORDER BY step LIMIT 20</textarea>
                     const div = allCharts[key]?.canvas?.closest('.chart-container');
                     if (div) catEl.charts.appendChild(div);
                 }
+                catEl.renderedKeys = pageKeys;
             }
 
             if (!hasCollapsible) {
@@ -584,6 +727,28 @@ ORDER BY step LIMIT 20</textarea>
         _rerenderAll = function() {
             destroyAll();
             render();
+        };
+
+        expandAllCategories = function() {
+            for (const cat of Object.keys(categoryElements)) {
+                if (collapsedCategories.has(cat)) {
+                    collapsedCategories.delete(cat);
+                    categoryElements[cat].header.classList.remove('collapsed');
+                    categoryElements[cat].charts.classList.remove('hidden');
+                    renderCategoryPage(cat);
+                }
+            }
+        };
+
+        collapseAllCategories = function() {
+            for (const cat of Object.keys(categoryElements)) {
+                if (!collapsedCategories.has(cat)) {
+                    collapsedCategories.add(cat);
+                    categoryElements[cat].header.classList.add('collapsed');
+                    categoryElements[cat].charts.classList.add('hidden');
+                    destroyCategoryCharts(cat);
+                }
+            }
         };
 
         function parseNdjson(text) {
