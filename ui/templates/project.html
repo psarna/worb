@@ -324,7 +324,7 @@
                         grid: { color: '#30363d' },
                     },
                 },
-                animation: false,
+                animation: { duration: 400 },
             }
         });
 
@@ -458,7 +458,7 @@
                         });
                         chart.data.labels = [...allSteps].sort((a, b) => a - b);
                         chart.data.datasets = dsArr;
-                        chart.update('none');
+                        chart.update();
                     } else {
                         allCharts[key] = createChart(catEl.charts, key, runDatasets, runOrder.filter(rid => runDatasets[rid]?.length), runColors);
                     }
@@ -471,10 +471,10 @@
         function scheduleRender() {
             if (renderPending) return;
             renderPending = true;
-            requestAnimationFrame(() => {
+            setTimeout(() => {
                 renderPending = false;
                 render();
-            });
+            }, 300);
         }
 
         async function loadRunHistory(runID) {
