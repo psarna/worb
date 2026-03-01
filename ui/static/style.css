@@ -87,6 +87,19 @@ h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
     margin-bottom: 24px;
 }
 
+.btn-delete {
+    margin-left: auto;
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 4px 12px;
+    font-size: 13px;
+    font-family: inherit;
+}
+.btn-delete:hover { color: var(--red); border-color: var(--red); }
+
 .tabs {
     display: flex;
     border-bottom: 1px solid var(--border);

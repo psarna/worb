@@ -32,6 +32,7 @@
         <div class="run-header">
             <h2 style="margin-bottom: 0;">{{if .Run.DisplayName}}{{.Run.DisplayName}}{{else}}{{.Run.Name}}{{end}}</h2>
             <span class="badge {{.Run.State}}">{{.Run.State}}</span>
+            <button class="btn-delete" onclick="deleteRun()" title="Delete this run">Delete</button>
         </div>
 
         <div class="tabs">
@@ -89,6 +90,14 @@ ORDER BY step LIMIT 20</textarea>
     const runState = "{{.Run.State}}";
     const runHistoryLineCount = {{.Run.HistoryLineCount}};
     let loadingHistory = true;
+    const projectID = "{{.Project.ID}}";
+
+    function deleteRun() {
+        if (!confirm('Delete this run and all its data? This cannot be undone.')) return;
+        fetch(`/api/runs/${runID}`, { method: 'DELETE' })
+            .then(r => { if (r.ok) window.location.href = `/projects/${projectID}`; else return r.text().then(t => { throw new Error(t); }); })
+            .catch(e => alert('Failed to delete run: ' + e.message));
+    }
 
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', () => {

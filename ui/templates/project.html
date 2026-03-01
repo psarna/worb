@@ -48,6 +48,7 @@
                     <th>State</th>
                     <th>Steps</th>
                     <th>Created</th>
+                    <th></th>
                 </tr>
             </thead>
             <tbody>
@@ -59,6 +60,7 @@
                     <td><span class="badge {{.State}}">{{.State}}</span></td>
                     <td>{{.HistoryLineCount}}</td>
                     <td style="color: var(--text-secondary);">{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+                    <td><button class="btn-delete" onclick="event.stopPropagation(); deleteRun('{{.ID}}', this)">Delete</button></td>
                 </tr>
                 {{end}}
             </tbody>
@@ -71,6 +73,13 @@
 
     <script>
     const projectID = "{{.Project.ID}}";
+
+    function deleteRun(runID, btn) {
+        if (!confirm('Delete this run and all its data? This cannot be undone.')) return;
+        fetch(`/api/runs/${runID}`, { method: 'DELETE' })
+            .then(r => { if (r.ok) { const tr = btn.closest('tr'); if (tr) tr.remove(); } else return r.text().then(t => { throw new Error(t); }); })
+            .catch(e => alert('Failed to delete run: ' + e.message));
+    }
 
     const IDB_NAME = 'worb';
     const IDB_STORE = 'history';

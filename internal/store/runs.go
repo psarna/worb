@@ -262,6 +262,30 @@ func (db *DB) ListRuns(projectID string) ([]*Run, error) {
 	return runs, nil
 }
 
+func (db *DB) DeleteRun(runID string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	tables := []string{"files", "artifacts", "console_logs", "system_events", "history"}
+	for _, table := range tables {
+		if _, err := tx.Exec("DELETE FROM "+table+" WHERE run_id = ?", runID); err != nil {
+			return fmt.Errorf("delete from %s: %w", table, err)
+		}
+	}
+	res, err := tx.Exec("DELETE FROM runs WHERE id = ?", runID)
+	if err != nil {
+		return fmt.Errorf("delete run: %w", err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("run not found: %s", runID)
+	}
+	return tx.Commit()
+}
+
 func (db *DB) ListRunsFiltered(projectID string, displayName string) ([]*Run, error) {
 	query := `SELECT id FROM runs WHERE project_id = ?`
 	args := []any{projectID}

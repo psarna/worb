@@ -105,6 +105,7 @@ func (s *Server) setupRoutes() {
 		r.Get("/runs/{runID}/history", s.apiGetHistory)
 		r.Get("/runs/{runID}/histograms", s.apiGetHistograms)
 		r.Get("/runs/{runID}/logs", s.apiGetLogs)
+		r.Delete("/runs/{runID}", s.apiDeleteRun)
 		r.Post("/query", s.apiQuery)
 	})
 
@@ -168,6 +169,16 @@ func (s *Server) apiGetRun(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(run)
+}
+
+func (s *Server) apiDeleteRun(w http.ResponseWriter, r *http.Request) {
+	runID := chi.URLParam(r, "runID")
+	if err := s.store.DeleteRun(runID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
 }
 
 func (s *Server) apiGetHistory(w http.ResponseWriter, r *http.Request) {
