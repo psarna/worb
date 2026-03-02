@@ -14,10 +14,12 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const entityChanSize = 1_000_000
+const entityChanSize = 10_000_000
 const entityBatchSize = 50_000
 const counterChanSize = 100_000
 const counterBatchSize = 10_000
+const ingestChanSize = 10_000
+const ingestBatchSize = 100
 const flushEvery = 500 * time.Millisecond
 
 type flexTime struct {
@@ -56,6 +58,7 @@ func (ft flexTime) Value() (driver.Value, error) {
 type DB struct {
 	*sql.DB
 	Engine     string
+	ingest     chan rawPayload
 	scalars    chan scalarItem
 	histograms chan histogramItem
 	events     chan eventItem
@@ -63,7 +66,8 @@ type DB struct {
 	counters   chan counterDelta
 	ctx        context.Context
 	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+	ingestWg   sync.WaitGroup
+	flushWg    sync.WaitGroup
 }
 
 func (db *DB) castJSON(col string) string {
@@ -127,48 +131,59 @@ func New(dataDir, engine string) (*DB, error) {
 }
 
 func (db *DB) startConsumer() {
+	db.ingest = make(chan rawPayload, ingestChanSize)
 	db.scalars = make(chan scalarItem, entityChanSize)
 	db.histograms = make(chan histogramItem, entityChanSize)
 	db.events = make(chan eventItem, entityChanSize)
 	db.logs = make(chan logItem, entityChanSize)
 	db.counters = make(chan counterDelta, counterChanSize)
 
-	start := func(f func()) {
-		db.wg.Add(1)
+	startIngest := func(f func()) {
+		db.ingestWg.Add(1)
 		go func() {
-			defer db.wg.Done()
+			defer db.ingestWg.Done()
 			f()
 		}()
 	}
-	start(func() { consumeBatches(db.ctx, db.scalars, entityBatchSize, flushEvery, db.processScalars) })
-	start(func() {
+	startFlush := func(f func()) {
+		db.flushWg.Add(1)
+		go func() {
+			defer db.flushWg.Done()
+			f()
+		}()
+	}
+	startIngest(func() { consumeBatches(db.ctx, db.ingest, ingestBatchSize, flushEvery, db.processIngest) })
+	startFlush(func() { consumeBatches(db.ctx, db.scalars, entityBatchSize, flushEvery, db.processScalars) })
+	startFlush(func() {
 		consumeBatches(db.ctx, db.histograms, entityBatchSize, flushEvery, db.processHistograms)
 	})
-	start(func() { consumeBatches(db.ctx, db.events, entityBatchSize, flushEvery, db.processEvents) })
-	start(func() { consumeBatches(db.ctx, db.logs, entityBatchSize, flushEvery, db.processLogs) })
-	start(func() {
+	startFlush(func() { consumeBatches(db.ctx, db.events, entityBatchSize, flushEvery, db.processEvents) })
+	startFlush(func() { consumeBatches(db.ctx, db.logs, entityBatchSize, flushEvery, db.processLogs) })
+	startFlush(func() {
 		consumeBatches(db.ctx, db.counters, counterBatchSize, flushEvery, db.processCounters)
 	})
 }
 
-func (db *DB) closeChannels() {
+// drainAll closes ingest first (waits for fan-out), then closes downstream channels.
+func (db *DB) drainAll() {
+	close(db.ingest)
+	db.ingestWg.Wait()
 	close(db.scalars)
 	close(db.histograms)
 	close(db.events)
 	close(db.logs)
 	close(db.counters)
+	db.flushWg.Wait()
 }
 
 // Flush synchronously drains pending writes. Used by tests.
 func (db *DB) Flush() {
-	db.closeChannels()
-	db.wg.Wait()
+	db.drainAll()
 	db.startConsumer()
 }
 
 func (db *DB) Close() error {
-	db.closeChannels()
-	db.wg.Wait()
+	db.drainAll()
 	db.cancel()
 	return db.DB.Close()
 }

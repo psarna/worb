@@ -20,14 +20,7 @@ func (db *DB) InsertHistoryBatch(runID string, rows []struct {
 	if len(rows) == 0 {
 		return nil
 	}
-	scalars, histograms := parseHistoryRows(rows)
-	for _, s := range scalars {
-		db.scalars <- scalarItem{runID: runID, parsedScalar: s}
-	}
-	for _, h := range histograms {
-		db.histograms <- histogramItem{runID: runID, parsedHistogram: h}
-	}
-	db.counters <- counterDelta{runID: runID, column: "history_line_count", delta: len(rows)}
+	db.ingest <- rawPayload{runID: runID, history: rows}
 	return nil
 }
 
@@ -474,10 +467,7 @@ func (db *DB) InsertSystemEventBatch(runID string, rows []struct {
 	if len(rows) == 0 {
 		return nil
 	}
-	for _, r := range rows {
-		db.events <- eventItem{runID: runID, lineNum: r.LineNum, data: string(r.Data)}
-	}
-	db.counters <- counterDelta{runID: runID, column: "events_line_count", delta: len(rows)}
+	db.ingest <- rawPayload{runID: runID, events: rows}
 	return nil
 }
 
@@ -496,10 +486,7 @@ func (db *DB) InsertConsoleLogBatch(runID string, rows []struct {
 	if len(rows) == 0 {
 		return nil
 	}
-	for _, r := range rows {
-		db.logs <- logItem{runID: runID, lineNum: r.LineNum, line: r.Line}
-	}
-	db.counters <- counterDelta{runID: runID, column: "log_line_count", delta: len(rows)}
+	db.ingest <- rawPayload{runID: runID, logs: rows}
 	return nil
 }
 
