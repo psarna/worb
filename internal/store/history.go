@@ -86,6 +86,8 @@ func parseHistoryRows(rows []struct {
 
 const multiRowSize = 100
 
+const txChunkSize = 1000
+
 func (db *DB) flushRunData(runID string, d *pendingData) error {
 	h := d.history
 	hasHistory := h != nil && (len(h.scalars) > 0 || len(h.histograms) > 0)
@@ -93,92 +95,175 @@ func (db *DB) flushRunData(runID string, d *pendingData) error {
 		return nil
 	}
 
+	if hasHistory {
+		for i := 0; i < len(h.scalars); i += txChunkSize {
+			end := i + txChunkSize
+			if end > len(h.scalars) {
+				end = len(h.scalars)
+			}
+			db.writeMu.Lock()
+			err := db.flushScalars(runID, h.scalars[i:end])
+			db.writeMu.Unlock()
+			if err != nil {
+				return err
+			}
+		}
+		for i := 0; i < len(h.histograms); i += txChunkSize {
+			end := i + txChunkSize
+			if end > len(h.histograms) {
+				end = len(h.histograms)
+			}
+			db.writeMu.Lock()
+			err := db.flushHistograms(runID, h.histograms[i:end])
+			db.writeMu.Unlock()
+			if err != nil {
+				return err
+			}
+		}
+		db.writeMu.Lock()
+		_, err := db.Exec("UPDATE runs SET history_line_count = history_line_count + ?, updated_at = current_timestamp WHERE id = ?", h.lineCount, runID)
+		db.writeMu.Unlock()
+		if err != nil {
+			return fmt.Errorf("update line count: %w", err)
+		}
+	}
+
+	for i := 0; i < len(d.events); i += txChunkSize {
+		end := i + txChunkSize
+		if end > len(d.events) {
+			end = len(d.events)
+		}
+		db.writeMu.Lock()
+		err := db.flushEvents(runID, d.events[i:end])
+		db.writeMu.Unlock()
+		if err != nil {
+			return err
+		}
+	}
+	if len(d.events) > 0 {
+		db.writeMu.Lock()
+		_, err := db.Exec("UPDATE runs SET events_line_count = events_line_count + ?, updated_at = current_timestamp WHERE id = ?", len(d.events), runID)
+		db.writeMu.Unlock()
+		if err != nil {
+			return fmt.Errorf("update events count: %w", err)
+		}
+	}
+
+	for i := 0; i < len(d.logs); i += txChunkSize {
+		end := i + txChunkSize
+		if end > len(d.logs) {
+			end = len(d.logs)
+		}
+		db.writeMu.Lock()
+		err := db.flushLogs(runID, d.logs[i:end])
+		db.writeMu.Unlock()
+		if err != nil {
+			return err
+		}
+	}
+	if len(d.logs) > 0 {
+		db.writeMu.Lock()
+		_, err := db.Exec("UPDATE runs SET log_line_count = log_line_count + ?, updated_at = current_timestamp WHERE id = ?", len(d.logs), runID)
+		db.writeMu.Unlock()
+		if err != nil {
+			return fmt.Errorf("update log count: %w", err)
+		}
+	}
+
+	return nil
+}
+
+func (db *DB) flushScalars(runID string, scalars []parsedScalar) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
-
-	if hasHistory {
-		for i := 0; i < len(h.scalars); i += multiRowSize {
-			end := i + multiRowSize
-			if end > len(h.scalars) {
-				end = len(h.scalars)
-			}
-			chunk := h.scalars[i:end]
-			query := "INSERT OR IGNORE INTO history_scalars (run_id, step, key, value, x_step) VALUES "
-			args := make([]interface{}, 0, len(chunk)*5)
-			for j, s := range chunk {
-				if j > 0 {
-					query += ","
-				}
-				query += "(?,?,?,?,?)"
-				args = append(args, runID, s.step, s.key, s.value, s.xStep)
-			}
-			if _, err := tx.Exec(query, args...); err != nil {
-				return fmt.Errorf("insert scalars: %w", err)
-			}
+	for i := 0; i < len(scalars); i += multiRowSize {
+		end := i + multiRowSize
+		if end > len(scalars) {
+			end = len(scalars)
 		}
-
-		for i := 0; i < len(h.histograms); i += multiRowSize {
-			end := i + multiRowSize
-			if end > len(h.histograms) {
-				end = len(h.histograms)
+		chunk := scalars[i:end]
+		query := "INSERT OR IGNORE INTO history_scalars (run_id, step, key, value, x_step) VALUES "
+		args := make([]interface{}, 0, len(chunk)*5)
+		for j, s := range chunk {
+			if j > 0 {
+				query += ","
 			}
-			chunk := h.histograms[i:end]
-			query := "INSERT OR IGNORE INTO history_histograms (run_id, step, key, x_step, bins, vals) VALUES "
-			args := make([]interface{}, 0, len(chunk)*6)
-			for j, hh := range chunk {
-				if j > 0 {
-					query += ","
-				}
-				query += "(?,?,?,?,?,?)"
-				args = append(args, runID, hh.step, hh.key, hh.xStep, hh.bins, hh.vals)
-			}
-			if _, err := tx.Exec(query, args...); err != nil {
-				return fmt.Errorf("insert histograms: %w", err)
-			}
+			query += "(?,?,?,?,?)"
+			args = append(args, runID, s.step, s.key, s.value, s.xStep)
 		}
-
-		if _, err := tx.Exec("UPDATE runs SET history_line_count = history_line_count + ?, updated_at = current_timestamp WHERE id = ?", h.lineCount, runID); err != nil {
-			return fmt.Errorf("update line count: %w", err)
+		if _, err := tx.Exec(query, args...); err != nil {
+			return fmt.Errorf("insert scalars: %w", err)
 		}
 	}
+	return tx.Commit()
+}
 
-	if len(d.events) > 0 {
-		stmt, err := tx.Prepare("INSERT INTO system_events (run_id, line_num, data) VALUES (?, ?, ?)")
-		if err != nil {
-			return fmt.Errorf("prepare events: %w", err)
+func (db *DB) flushHistograms(runID string, histograms []parsedHistogram) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	for i := 0; i < len(histograms); i += multiRowSize {
+		end := i + multiRowSize
+		if end > len(histograms) {
+			end = len(histograms)
 		}
-		for _, e := range d.events {
-			if _, err := stmt.Exec(runID, e.lineNum, e.data); err != nil {
-				stmt.Close()
-				return fmt.Errorf("insert event %d: %w", e.lineNum, err)
+		chunk := histograms[i:end]
+		query := "INSERT OR IGNORE INTO history_histograms (run_id, step, key, x_step, bins, vals) VALUES "
+		args := make([]interface{}, 0, len(chunk)*6)
+		for j, hh := range chunk {
+			if j > 0 {
+				query += ","
 			}
+			query += "(?,?,?,?,?,?)"
+			args = append(args, runID, hh.step, hh.key, hh.xStep, hh.bins, hh.vals)
 		}
-		stmt.Close()
-		if _, err := tx.Exec("UPDATE runs SET events_line_count = events_line_count + ?, updated_at = current_timestamp WHERE id = ?", len(d.events), runID); err != nil {
-			return fmt.Errorf("update events count: %w", err)
+		if _, err := tx.Exec(query, args...); err != nil {
+			return fmt.Errorf("insert histograms: %w", err)
 		}
 	}
+	return tx.Commit()
+}
 
-	if len(d.logs) > 0 {
-		stmt, err := tx.Prepare("INSERT INTO console_logs (run_id, line_num, line, stream) VALUES (?, ?, ?, 'stdout')")
-		if err != nil {
-			return fmt.Errorf("prepare logs: %w", err)
-		}
-		for _, l := range d.logs {
-			if _, err := stmt.Exec(runID, l.lineNum, l.line); err != nil {
-				stmt.Close()
-				return fmt.Errorf("insert log %d: %w", l.lineNum, err)
-			}
-		}
-		stmt.Close()
-		if _, err := tx.Exec("UPDATE runs SET log_line_count = log_line_count + ?, updated_at = current_timestamp WHERE id = ?", len(d.logs), runID); err != nil {
-			return fmt.Errorf("update log count: %w", err)
+func (db *DB) flushEvents(runID string, events []pendingEvent) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	stmt, err := tx.Prepare("INSERT INTO system_events (run_id, line_num, data) VALUES (?, ?, ?)")
+	if err != nil {
+		return fmt.Errorf("prepare events: %w", err)
+	}
+	defer stmt.Close()
+	for _, e := range events {
+		if _, err := stmt.Exec(runID, e.lineNum, e.data); err != nil {
+			return fmt.Errorf("insert event %d: %w", e.lineNum, err)
 		}
 	}
+	return tx.Commit()
+}
 
+func (db *DB) flushLogs(runID string, logs []pendingLog) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+	stmt, err := tx.Prepare("INSERT INTO console_logs (run_id, line_num, line, stream) VALUES (?, ?, ?, 'stdout')")
+	if err != nil {
+		return fmt.Errorf("prepare logs: %w", err)
+	}
+	defer stmt.Close()
+	for _, l := range logs {
+		if _, err := stmt.Exec(runID, l.lineNum, l.line); err != nil {
+			return fmt.Errorf("insert log %d: %w", l.lineNum, err)
+		}
+	}
 	return tx.Commit()
 }
 

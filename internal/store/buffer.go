@@ -127,10 +127,7 @@ func (b *writeBuffer) flushAsync() {
 
 func (b *writeBuffer) flush(batches map[string]*pendingData) {
 	for runID, p := range batches {
-		b.db.writeMu.Lock()
-		err := b.db.flushRunData(runID, p)
-		b.db.writeMu.Unlock()
-		if err != nil {
+		if err := b.db.flushRunData(runID, p); err != nil {
 			log.Printf("buffer flush %s: %v", runID, err)
 		}
 	}
