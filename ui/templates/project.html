@@ -456,7 +456,9 @@
     const EYE_OPEN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
     const EYE_CLOSED = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>';
 
-    function toggleRun(runID) {
+    let _onRunToggled = null;
+
+    async function toggleRun(runID) {
         if (hiddenRuns.has(runID)) {
             hiddenRuns.delete(runID);
         } else {
@@ -466,6 +468,9 @@
         if (row) {
             row.classList.toggle('hidden', hiddenRuns.has(runID));
             row.querySelector('.sidebar-eye').innerHTML = hiddenRuns.has(runID) ? EYE_CLOSED : EYE_OPEN;
+        }
+        if (_onRunToggled && !hiddenRuns.has(runID)) {
+            await _onRunToggled(runID);
         }
         for (const chart of everyChart) {
             for (const ds of chart.data.datasets) {
@@ -515,12 +520,17 @@
     }
 
     function resetAllZoom() {
+        syncing = true;
         for (const c of everyChart) {
+            if (c.resetZoom) c.resetZoom('none');
             if (c.options.scales?.x) {
                 c.options.scales.x.min = undefined;
                 c.options.scales.x.max = undefined;
             }
             c.update('none');
+        }
+        syncing = false;
+        for (const c of everyChart) {
             const btn = c.canvas.closest('.chart-container')?.querySelector('.zoom-reset-btn');
             if (btn) btn.style.display = 'none';
         }
@@ -633,13 +643,7 @@
         });
     }
 
-    function createChart(grid, key, runDatasets, runOrder, runColors) {
-        const div = document.createElement('div');
-        div.className = 'chart-container';
-        div.id = 'cc-' + key.replace(/[^a-zA-Z0-9]/g, '_');
-        div.innerHTML = `<div class="chart-header"><div class="chart-title">${key}</div><button class="zoom-reset-btn" style="display:none;" title="Reset zoom">Reset</button></div><canvas></canvas>`;
-        grid.appendChild(div);
-
+    function createChart(div, key, runDatasets, runOrder, runColors) {
         const resetBtn = div.querySelector('.zoom-reset-btn');
         const multiRun = runOrder.length > 1;
 
@@ -820,16 +824,49 @@
             if (lc > maxHistoryLineCount) maxHistoryLineCount = lc;
         }
 
+        const DEFAULT_VISIBLE_RUNS = 3;
+        const loadedRuns = new Set();
+        if (runOrder.length > DEFAULT_VISIBLE_RUNS) {
+            for (let i = DEFAULT_VISIBLE_RUNS; i < runOrder.length; i++) {
+                hiddenRuns.add(runOrder[i]);
+            }
+        }
+
         updateSidebar(runOrder, runColors);
 
         const PAGE_SIZE = 12;
+        const PARTIAL_SIZE = 6;
         const AUTO_COLLAPSE_THRESHOLD = 50;
         const MAX_CHART_POINTS = 1000;
 
         const collapsedCategories = new Set();
+        const partialCategories = new Set();
         const categoryElements = {};
         let searchFilter = '';
         const initializedCategories = new Set();
+
+        const chartObserver = new IntersectionObserver((entries) => {
+            for (const entry of entries) {
+                if (!entry.isIntersecting) continue;
+                const div = entry.target;
+                const key = div.dataset.chartKey;
+                if (!key || allCharts[key]) continue;
+                const runDatasets = metrics[key];
+                if (!runDatasets) continue;
+                allCharts[key] = createChart(div, key, runDatasets, runOrder.filter(rid => runDatasets[rid]?.length), runColors);
+                chartObserver.unobserve(div);
+            }
+        }, { rootMargin: '200px' });
+
+        function createChartPlaceholder(container, key) {
+            const div = document.createElement('div');
+            div.className = 'chart-container';
+            div.id = 'cc-' + key.replace(/[^a-zA-Z0-9]/g, '_');
+            div.dataset.chartKey = key;
+            div.innerHTML = `<div class="chart-header"><div class="chart-title">${key}</div><button class="zoom-reset-btn" style="display:none;" title="Reset zoom">Reset</button></div><canvas></canvas>`;
+            container.appendChild(div);
+            return div;
+        }
 
         document.getElementById('chart-search').addEventListener('input', (e) => {
             searchFilter = e.target.value.toLowerCase();
@@ -854,6 +891,9 @@
                     allCharts[key].destroy();
                     delete allCharts[key];
                 }
+                const divId = 'cc-' + key.replace(/[^a-zA-Z0-9]/g, '_');
+                const div = document.getElementById(divId);
+                if (div) chartObserver.unobserve(div);
             }
             catEl.charts.innerHTML = '';
             catEl.renderedKeys = [];
@@ -867,19 +907,36 @@
 
             destroyCategoryCharts(cat);
 
-            const start = catEl.page * PAGE_SIZE;
-            const pageKeys = keys.slice(start, start + PAGE_SIZE);
-            catEl.renderedKeys = pageKeys;
+            const isPartial = partialCategories.has(cat);
+            const displayKeys = isPartial ? keys.slice(0, PARTIAL_SIZE) : keys.slice(catEl.page * PAGE_SIZE, catEl.page * PAGE_SIZE + PAGE_SIZE);
+            catEl.renderedKeys = displayKeys;
 
-            for (const key of pageKeys) {
-                const runDatasets = metrics[key];
-                allCharts[key] = createChart(catEl.charts, key, runDatasets, runOrder.filter(rid => runDatasets[rid]?.length), runColors);
+            for (const key of displayKeys) {
+                const div = createChartPlaceholder(catEl.charts, key);
+                chartObserver.observe(div);
+            }
+
+            if (isPartial && keys.length > PARTIAL_SIZE) {
+                const btn = document.createElement('button');
+                btn.className = 'show-all-btn';
+                btn.textContent = `Show all ${keys.length} charts`;
+                btn.addEventListener('click', () => {
+                    partialCategories.delete(cat);
+                    catEl.page = 0;
+                    renderCategoryPage(cat);
+                    updatePageInfo(cat);
+                });
+                catEl.charts.appendChild(btn);
             }
         }
 
         function updatePageInfo(cat) {
             const catEl = categoryElements[cat];
             if (!catEl || !catEl.pageInfo) return;
+            if (partialCategories.has(cat)) {
+                catEl.pageInfo.style.display = 'none';
+                return;
+            }
             const totalPages = Math.max(1, Math.ceil(catEl.keys.length / PAGE_SIZE));
             if (catEl.keys.length <= PAGE_SIZE) {
                 catEl.pageInfo.style.display = 'none';
@@ -907,9 +964,13 @@
                 collapsedCategories.delete(cat);
                 el.header.classList.remove('collapsed');
                 el.charts.classList.remove('hidden');
+                if (el.keys.length > PARTIAL_SIZE) partialCategories.add(cat);
+                el.page = 0;
                 renderCategoryPage(cat);
+                updatePageInfo(cat);
             } else {
                 collapsedCategories.add(cat);
+                partialCategories.delete(cat);
                 el.header.classList.add('collapsed');
                 el.charts.classList.add('hidden');
                 destroyCategoryCharts(cat);
@@ -923,6 +984,7 @@
             }
             const shouldCollapse = totalCategories > 1 && initializedCategories.size > 0 && !initializedCategories.has(cat);
             if (shouldCollapse) collapsedCategories.add(cat);
+            else if (count > PARTIAL_SIZE) partialCategories.add(cat);
             initializedCategories.add(cat);
 
             const section = document.createElement('div');
@@ -1001,21 +1063,24 @@
 
                 if (collapsedCategories.has(cat)) continue;
 
-                const start = catEl.page * PAGE_SIZE;
-                const pageKeys = keys.slice(start, start + PAGE_SIZE);
-                const pageKeySet = new Set(pageKeys);
+                const isPartial = partialCategories.has(cat);
+                const displayKeys = isPartial ? keys.slice(0, PARTIAL_SIZE) : keys.slice(catEl.page * PAGE_SIZE, catEl.page * PAGE_SIZE + PAGE_SIZE);
+                const displayKeySet = new Set(displayKeys);
 
                 for (const key of (catEl.renderedKeys || [])) {
-                    if (!pageKeySet.has(key) && allCharts[key]) {
-                        everyChart.delete(allCharts[key]);
-                        allCharts[key].destroy();
-                        delete allCharts[key];
-                        const div = document.getElementById('cc-' + key.replace(/[^a-zA-Z0-9]/g, '_'));
-                        if (div) div.remove();
+                    if (!displayKeySet.has(key)) {
+                        if (allCharts[key]) {
+                            everyChart.delete(allCharts[key]);
+                            allCharts[key].destroy();
+                            delete allCharts[key];
+                        }
+                        const divId = 'cc-' + key.replace(/[^a-zA-Z0-9]/g, '_');
+                        const div = document.getElementById(divId);
+                        if (div) { chartObserver.unobserve(div); div.remove(); }
                     }
                 }
 
-                for (const key of pageKeys) {
+                for (const key of displayKeys) {
                     const runDatasets = metrics[key];
                     if (allCharts[key]) {
                         const chart = allCharts[key];
@@ -1079,12 +1144,39 @@
                         }
                         chart.update(loadingHistory ? 'none' : undefined);
                     } else {
-                        allCharts[key] = createChart(catEl.charts, key, runDatasets, runOrder.filter(rid => runDatasets[rid]?.length), runColors);
+                        const divId = 'cc-' + key.replace(/[^a-zA-Z0-9]/g, '_');
+                        let div = document.getElementById(divId);
+                        if (!div) {
+                            div = createChartPlaceholder(catEl.charts, key);
+                            chartObserver.observe(div);
+                        }
                     }
-                    const div = allCharts[key]?.canvas?.closest('.chart-container');
+                    const div = allCharts[key]?.canvas?.closest('.chart-container') || document.getElementById('cc-' + key.replace(/[^a-zA-Z0-9]/g, '_'));
                     if (div) catEl.charts.appendChild(div);
                 }
-                catEl.renderedKeys = pageKeys;
+
+                const existingBtn = catEl.charts.querySelector('.show-all-btn');
+                if (isPartial && keys.length > PARTIAL_SIZE) {
+                    if (existingBtn) {
+                        existingBtn.textContent = `Show all ${keys.length} charts`;
+                        catEl.charts.appendChild(existingBtn);
+                    } else {
+                        const btn = document.createElement('button');
+                        btn.className = 'show-all-btn';
+                        btn.textContent = `Show all ${keys.length} charts`;
+                        btn.addEventListener('click', () => {
+                            partialCategories.delete(cat);
+                            catEl.page = 0;
+                            renderCategoryPage(cat);
+                            updatePageInfo(cat);
+                        });
+                        catEl.charts.appendChild(btn);
+                    }
+                } else if (existingBtn) {
+                    existingBtn.remove();
+                }
+
+                catEl.renderedKeys = displayKeys;
             }
         }
 
@@ -1092,9 +1184,12 @@
             for (const cat of Object.keys(categoryElements)) {
                 if (collapsedCategories.has(cat)) {
                     collapsedCategories.delete(cat);
+                    if (categoryElements[cat].keys.length > PARTIAL_SIZE) partialCategories.add(cat);
                     categoryElements[cat].header.classList.remove('collapsed');
                     categoryElements[cat].charts.classList.remove('hidden');
+                    categoryElements[cat].page = 0;
                     renderCategoryPage(cat);
+                    updatePageInfo(cat);
                 }
             }
         };
@@ -1103,6 +1198,7 @@
             for (const cat of Object.keys(categoryElements)) {
                 if (!collapsedCategories.has(cat)) {
                     collapsedCategories.add(cat);
+                    partialCategories.delete(cat);
                     categoryElements[cat].header.classList.add('collapsed');
                     categoryElements[cat].charts.classList.add('hidden');
                     destroyCategoryCharts(cat);
@@ -1118,6 +1214,8 @@
             }
             grid.innerHTML = '';
             for (const key of Object.keys(categoryElements)) delete categoryElements[key];
+            partialCategories.clear();
+            initializedCategories.clear();
         }
 
         _rerenderAll = function() {
@@ -1189,9 +1287,17 @@
                 scheduleRender();
             }
             await setCachedHistory(runID, expectedLines, fullText);
+            loadedRuns.add(runID);
         }
 
-        await Promise.all(runOrder.map(id => loadRunHistory(id)));
+        _onRunToggled = async function(runID) {
+            if (!loadedRuns.has(runID)) {
+                await loadRunHistory(runID);
+                render();
+            }
+        };
+
+        await Promise.all(runOrder.filter(id => !hiddenRuns.has(id)).map(id => loadRunHistory(id)));
         loadingHistory = false;
         for (const chart of everyChart) {
             chart.options.animation = { duration: 400 };

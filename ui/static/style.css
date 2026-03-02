@@ -708,6 +708,20 @@ table tr:hover { background: rgba(255,255,255,0.02); }
 }
 .settings-toggle:checked::after { transform: translateX(16px); }
 
+.show-all-btn {
+    grid-column: 1 / -1;
+    background: none;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    padding: 12px;
+    font-size: 13px;
+    font-family: inherit;
+    text-align: center;
+}
+.show-all-btn:hover { color: var(--text); border-color: var(--text-secondary); border-style: solid; }
+
 .category-pagination {
     display: flex;
     align-items: center;
