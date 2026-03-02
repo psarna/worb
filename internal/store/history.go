@@ -80,47 +80,85 @@ type ScalarPoint struct {
 	Index int     `json:"i"`
 }
 
-func (db *DB) StreamHistoryScalars(runID string, emit func(ScalarPoint) error) error {
+func (db *DB) StreamHistoryScalars(runID string, maxPoints int, emit func(ScalarPoint) error) error {
+	// Determine sampling interval
+	every := 1
+	if maxPoints > 0 {
+		var totalRows int
+		if err := db.QueryRow("SELECT COUNT(*) FROM history WHERE run_id = ?", runID).Scan(&totalRows); err != nil {
+			return err
+		}
+		if totalRows > maxPoints {
+			every = totalRows / maxPoints
+		}
+	}
+
 	rows, err := db.Query(fmt.Sprintf("SELECT step, %s FROM history WHERE run_id = ? ORDER BY step", db.castJSON("data")), runID)
 	if err != nil {
 		return err
 	}
 	defer rows.Close()
 
+	rowIdx := 0
+	var lastStep int
+	var lastData string
+	hasLast := false
 	for rows.Next() {
 		var step int
 		var data string
 		if err := rows.Scan(&step, &data); err != nil {
 			return err
 		}
+		rowIdx++
 
-		var obj map[string]json.RawMessage
-		if json.Unmarshal([]byte(data), &obj) != nil {
+		if every > 1 && rowIdx != 1 && rowIdx%every != 0 {
+			lastStep = step
+			lastData = data
+			hasLast = true
 			continue
 		}
+		hasLast = false
 
-		xVal := float64(step)
-		if raw, ok := obj["_step"]; ok {
-			var v float64
-			if json.Unmarshal(raw, &v) == nil {
-				xVal = v
-			}
+		if err := emitHistoryRow(step, data, emit); err != nil {
+			return err
 		}
-
-		for key, raw := range obj {
-			if len(key) > 0 && key[0] == '_' || key == "step" {
-				continue
-			}
-			var v float64
-			if json.Unmarshal(raw, &v) != nil {
-				continue
-			}
-			if err := emit(ScalarPoint{Key: key, Step: xVal, Value: v, Index: step}); err != nil {
-				return err
-			}
+	}
+	// Always emit the last row for good chart boundaries
+	if hasLast {
+		if err := emitHistoryRow(lastStep, lastData, emit); err != nil {
+			return err
 		}
 	}
 	return rows.Err()
+}
+
+func emitHistoryRow(step int, data string, emit func(ScalarPoint) error) error {
+	var obj map[string]json.RawMessage
+	if json.Unmarshal([]byte(data), &obj) != nil {
+		return nil
+	}
+
+	xVal := float64(step)
+	if raw, ok := obj["_step"]; ok {
+		var v float64
+		if json.Unmarshal(raw, &v) == nil {
+			xVal = v
+		}
+	}
+
+	for key, raw := range obj {
+		if len(key) > 0 && key[0] == '_' || key == "step" {
+			continue
+		}
+		var v float64
+		if json.Unmarshal(raw, &v) != nil {
+			continue
+		}
+		if err := emit(ScalarPoint{Key: key, Step: xVal, Value: v, Index: step}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type ProjectScalarPoint struct {
@@ -132,7 +170,25 @@ type ProjectScalarPoint struct {
 	Index   int     `json:"i"`
 }
 
-func (db *DB) StreamProjectHistoryScalars(projectID string, emit func(ProjectScalarPoint) error) error {
+func (db *DB) StreamProjectHistoryScalars(projectID string, maxPoints int, emit func(ProjectScalarPoint) error) error {
+	// Determine per-run sampling interval
+	every := 1
+	if maxPoints > 0 {
+		var maxRunRows int
+		err := db.QueryRow(`SELECT COALESCE(MAX(cnt), 0) FROM (
+			SELECT COUNT(*) as cnt FROM history h
+			JOIN runs r ON r.id = h.run_id
+			WHERE r.project_id = ?
+			GROUP BY h.run_id
+		) sub`, projectID).Scan(&maxRunRows)
+		if err != nil {
+			return err
+		}
+		if maxRunRows > maxPoints {
+			every = maxRunRows / maxPoints
+		}
+	}
+
 	rows, err := db.Query(fmt.Sprintf(`
 		SELECT r.id, COALESCE(NULLIF(r.display_name, ''), r.name) as run_name, h.step, %s
 		FROM history h
@@ -144,6 +200,10 @@ func (db *DB) StreamProjectHistoryScalars(projectID string, emit func(ProjectSca
 	}
 	defer rows.Close()
 
+	// Track row index per run for sampling
+	runRowIdx := map[string]int{}
+	runLastRow := map[string][4]string{} // runID, runName, step, data
+
 	for rows.Next() {
 		var runID, runName string
 		var step int
@@ -152,40 +212,64 @@ func (db *DB) StreamProjectHistoryScalars(projectID string, emit func(ProjectSca
 			return err
 		}
 
-		var obj map[string]json.RawMessage
-		if json.Unmarshal([]byte(data), &obj) != nil {
+		runRowIdx[runID]++
+		idx := runRowIdx[runID]
+
+		if every > 1 && idx != 1 && idx%every != 0 {
+			runLastRow[runID] = [4]string{runID, runName, fmt.Sprintf("%d", step), data}
 			continue
 		}
+		delete(runLastRow, runID)
 
-		xVal := float64(step)
-		if raw, ok := obj["_step"]; ok {
-			var v float64
-			if json.Unmarshal(raw, &v) == nil {
-				xVal = v
-			}
+		if err := emitProjectHistoryRow(runID, runName, step, data, emit); err != nil {
+			return err
 		}
-
-		for key, raw := range obj {
-			if len(key) > 0 && key[0] == '_' || key == "step" {
-				continue
-			}
-			var v float64
-			if json.Unmarshal(raw, &v) != nil {
-				continue
-			}
-			if err := emit(ProjectScalarPoint{
-				RunID:   runID,
-				RunName: runName,
-				Key:     key,
-				Step:    xVal,
-				Value:   v,
-				Index:   step,
-			}); err != nil {
-				return err
-			}
+	}
+	// Emit last row of each run
+	for _, last := range runLastRow {
+		var step int
+		fmt.Sscanf(last[2], "%d", &step)
+		if err := emitProjectHistoryRow(last[0], last[1], step, last[3], emit); err != nil {
+			return err
 		}
 	}
 	return rows.Err()
+}
+
+func emitProjectHistoryRow(runID, runName string, step int, data string, emit func(ProjectScalarPoint) error) error {
+	var obj map[string]json.RawMessage
+	if json.Unmarshal([]byte(data), &obj) != nil {
+		return nil
+	}
+
+	xVal := float64(step)
+	if raw, ok := obj["_step"]; ok {
+		var v float64
+		if json.Unmarshal(raw, &v) == nil {
+			xVal = v
+		}
+	}
+
+	for key, raw := range obj {
+		if len(key) > 0 && key[0] == '_' || key == "step" {
+			continue
+		}
+		var v float64
+		if json.Unmarshal(raw, &v) != nil {
+			continue
+		}
+		if err := emit(ProjectScalarPoint{
+			RunID:   runID,
+			RunName: runName,
+			Key:     key,
+			Step:    xVal,
+			Value:   v,
+			Index:   step,
+		}); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 type HistogramPoint struct {

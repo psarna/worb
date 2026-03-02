@@ -635,6 +635,8 @@
 
         const PAGE_SIZE = 12;
         const AUTO_COLLAPSE_THRESHOLD = 50;
+        const MAX_CHART_POINTS = 1000;
+
         const collapsedCategories = new Set();
         const categoryElements = {};
         let searchFilter = '';
@@ -920,7 +922,7 @@
             }
 
             const name = runNames[runID] || runID.slice(0, 8);
-            const resp = await fetch(`/api/runs/${runID}/history`);
+            const resp = await fetch(`/api/runs/${runID}/history?maxPoints=${MAX_CHART_POINTS}`);
             const reader = resp.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';

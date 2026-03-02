@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"path/filepath"
+	"strconv"
 
 	gqlgraphql "github.com/99designs/gqlgen/graphql"
 	"github.com/99designs/gqlgen/graphql/handler"
@@ -183,6 +184,7 @@ func (s *Server) apiDeleteRun(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) apiGetHistory(w http.ResponseWriter, r *http.Request) {
 	runID := chi.URLParam(r, "runID")
+	maxPoints, _ := strconv.Atoi(r.URL.Query().Get("maxPoints"))
 
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -191,7 +193,7 @@ func (s *Server) apiGetHistory(w http.ResponseWriter, r *http.Request) {
 	enc := json.NewEncoder(w)
 	n := 0
 
-	err := s.store.StreamHistoryScalars(runID, func(p store.ScalarPoint) error {
+	err := s.store.StreamHistoryScalars(runID, maxPoints, func(p store.ScalarPoint) error {
 		if err := enc.Encode(p); err != nil {
 			return err
 		}
@@ -214,6 +216,7 @@ func (s *Server) apiGetHistory(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) apiGetProjectHistory(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectID")
+	maxPoints, _ := strconv.Atoi(r.URL.Query().Get("maxPoints"))
 
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -222,7 +225,7 @@ func (s *Server) apiGetProjectHistory(w http.ResponseWriter, r *http.Request) {
 	enc := json.NewEncoder(w)
 	n := 0
 
-	err := s.store.StreamProjectHistoryScalars(projectID, func(p store.ProjectScalarPoint) error {
+	err := s.store.StreamProjectHistoryScalars(projectID, maxPoints, func(p store.ProjectScalarPoint) error {
 		if err := enc.Encode(p); err != nil {
 			return err
 		}

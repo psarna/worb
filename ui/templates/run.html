@@ -631,6 +631,7 @@ ORDER BY step LIMIT 20</textarea>
 
         const PAGE_SIZE = 12;
         const AUTO_COLLAPSE_THRESHOLD = 50;
+        const MAX_CHART_POINTS = 1000;
 
         function destroyAll() {
             for (const key of Object.keys(allCharts)) {
@@ -944,7 +945,7 @@ ORDER BY step LIMIT 20</textarea>
         }
 
         for (const k in metrics) delete metrics[k];
-        const resp = await fetch(`/api/runs/${runID}/history`);
+        const resp = await fetch(`/api/runs/${runID}/history?maxPoints=${MAX_CHART_POINTS}`);
         const reader = resp.body.getReader();
         const decoder = new TextDecoder();
         let buffer = '';
