@@ -269,7 +269,7 @@ func (db *DB) DeleteRun(runID string) error {
 	}
 	defer tx.Rollback()
 
-	tables := []string{"files", "artifacts", "console_logs", "system_events", "history"}
+	tables := []string{"files", "artifacts", "console_logs", "system_events", "history", "history_scalar_agg", "history_agg_meta"}
 	for _, table := range tables {
 		if _, err := tx.Exec("DELETE FROM "+table+" WHERE run_id = ?", runID); err != nil {
 			return fmt.Errorf("delete from %s: %w", table, err)

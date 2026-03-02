@@ -253,6 +253,20 @@ func (db *DB) migrateSQLite() error {
 		`CREATE INDEX IF NOT EXISTS idx_system_events_run_id ON system_events(run_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_console_logs_run_id ON console_logs(run_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_runs_project_id ON runs(project_id)`,
+		`CREATE TABLE IF NOT EXISTS history_scalar_agg (
+			run_id TEXT NOT NULL,
+			key TEXT NOT NULL,
+			bucket INTEGER NOT NULL,
+			step REAL NOT NULL,
+			value REAL NOT NULL,
+			min_value REAL NOT NULL,
+			max_value REAL NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_hsa_run_key ON history_scalar_agg(run_id, key)`,
+		`CREATE TABLE IF NOT EXISTS history_agg_meta (
+			run_id TEXT PRIMARY KEY,
+			line_count INTEGER NOT NULL DEFAULT 0
+		)`,
 	}
 
 	for _, m := range migrations {
@@ -338,6 +352,20 @@ func (db *DB) migrateDuckDB() error {
 		`CREATE INDEX IF NOT EXISTS idx_system_events_run_id ON system_events(run_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_console_logs_run_id ON console_logs(run_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_runs_project_id ON runs(project_id)`,
+		`CREATE TABLE IF NOT EXISTS history_scalar_agg (
+			run_id TEXT NOT NULL,
+			key TEXT NOT NULL,
+			bucket INTEGER NOT NULL,
+			step DOUBLE NOT NULL,
+			value DOUBLE NOT NULL,
+			min_value DOUBLE NOT NULL,
+			max_value DOUBLE NOT NULL
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_hsa_run_key ON history_scalar_agg(run_id, key)`,
+		`CREATE TABLE IF NOT EXISTS history_agg_meta (
+			run_id TEXT PRIMARY KEY,
+			line_count INTEGER NOT NULL DEFAULT 0
+		)`,
 	}
 
 	for _, m := range migrations {

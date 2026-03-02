@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strings"
 )
 
 type HistoryRow struct {
@@ -116,11 +117,16 @@ type ScalarPoint struct {
 	Index int      `json:"i"`
 }
 
+const aggTargetResolution = 2000
+
 func (db *DB) StreamHistoryScalars(runID string, maxPoints int, filterKeys []string, emit func(ScalarPoint) error) error {
 	if len(filterKeys) > 0 && db.isSQLite() {
 		return db.streamHistoryScalarsFast(runID, maxPoints, filterKeys, emit)
 	}
+	return db.streamHistoryScalarsRegular(runID, maxPoints, filterKeys, emit)
+}
 
+func (db *DB) streamHistoryScalarsRegular(runID string, maxPoints int, filterKeys []string, emit func(ScalarPoint) error) error {
 	var keySet map[string]bool
 	if len(filterKeys) > 0 {
 		keySet = make(map[string]bool, len(filterKeys))
@@ -252,64 +258,233 @@ func (db *DB) StreamHistoryScalars(runID string, maxPoints int, filterKeys []str
 }
 
 func (db *DB) streamHistoryScalarsFast(runID string, maxPoints int, filterKeys []string, emit func(ScalarPoint) error) error {
-	skipMod := 0
+	var totalRows int
 	if maxPoints > 0 {
-		var totalRows int
 		if err := db.QueryRow("SELECT COUNT(*) FROM history WHERE run_id = ?", runID).Scan(&totalRows); err != nil {
 			return err
 		}
-		if totalRows > maxPoints {
-			skipMod = totalRows / maxPoints
+	}
+
+	if maxPoints == 0 || totalRows <= maxPoints {
+		// No downsampling needed — emit individual points via json_extract
+		cols := "step, json_extract(data, '$._step')"
+		for _, k := range filterKeys {
+			cols += fmt.Sprintf(`, json_extract(data, '$."%s"')`, k)
 		}
-	}
+		query := fmt.Sprintf("SELECT %s FROM history WHERE run_id = ? ORDER BY step", cols)
 
-	cols := "step, json_extract(data, '$._step')"
-	for _, k := range filterKeys {
-		cols += fmt.Sprintf(`, json_extract(data, '$."%s"')`, k)
-	}
-
-	var query string
-	if skipMod > 1 {
-		query = fmt.Sprintf("SELECT %s FROM history WHERE run_id = ? AND (step %% %d) = 0 ORDER BY step", cols, skipMod)
-	} else {
-		query = fmt.Sprintf("SELECT %s FROM history WHERE run_id = ? ORDER BY step", cols)
-	}
-
-	rows, err := db.Query(query, runID)
-	if err != nil {
-		return db.StreamHistoryScalars(runID, maxPoints, nil, emit)
-	}
-	defer rows.Close()
-
-	nCols := 2 + len(filterKeys)
-	scanDest := make([]interface{}, nCols)
-	var step int
-	var xStepRaw *float64
-	scanDest[0] = &step
-	scanDest[1] = &xStepRaw
-	valPtrs := make([]*float64, len(filterKeys))
-	for i := range filterKeys {
-		scanDest[2+i] = &valPtrs[i]
-	}
-
-	for rows.Next() {
-		if err := rows.Scan(scanDest...); err != nil {
-			return err
+		rows, err := db.Query(query, runID)
+		if err != nil {
+			return db.streamHistoryScalarsRegular(runID, maxPoints, filterKeys, emit)
 		}
-		xVal := float64(step)
-		if xStepRaw != nil {
-			xVal = *xStepRaw
+		defer rows.Close()
+
+		nCols := 2 + len(filterKeys)
+		scanDest := make([]interface{}, nCols)
+		var step int
+		var xStepRaw *float64
+		scanDest[0] = &step
+		scanDest[1] = &xStepRaw
+		valPtrs := make([]*float64, len(filterKeys))
+		for i := range filterKeys {
+			scanDest[2+i] = &valPtrs[i]
 		}
-		for i, key := range filterKeys {
-			if valPtrs[i] == nil {
-				continue
+
+		for rows.Next() {
+			if err := rows.Scan(scanDest...); err != nil {
+				return err
 			}
-			if err := emit(ScalarPoint{Key: key, Step: xVal, Value: *valPtrs[i], Index: step}); err != nil {
+			xVal := float64(step)
+			if xStepRaw != nil {
+				xVal = *xStepRaw
+			}
+			for i, key := range filterKeys {
+				if valPtrs[i] == nil {
+					continue
+				}
+				if err := emit(ScalarPoint{Key: key, Step: xVal, Value: *valPtrs[i], Index: step}); err != nil {
+					return err
+				}
+			}
+		}
+		return rows.Err()
+	}
+
+	// Downsampling needed — use cached agg table
+	var aggLineCount int
+	db.QueryRow("SELECT line_count FROM history_agg_meta WHERE run_id = ?", runID).Scan(&aggLineCount)
+
+	if aggLineCount != totalRows {
+		if err := db.rebuildHistoryAgg(runID, totalRows); err != nil {
+			// Fall back to regular path on rebuild failure
+			return db.streamHistoryScalarsRegular(runID, maxPoints, filterKeys, emit)
+		}
+	}
+
+	foundKeys, err := db.queryHistoryAgg(runID, maxPoints, filterKeys, emit)
+	if err != nil {
+		return err
+	}
+
+	// Backfill any keys missing from the agg table
+	var missingKeys []string
+	for _, k := range filterKeys {
+		if !foundKeys[k] {
+			missingKeys = append(missingKeys, k)
+		}
+	}
+	if len(missingKeys) > 0 {
+		if err := db.backfillHistoryAgg(runID, missingKeys); err == nil {
+			if _, err := db.queryHistoryAgg(runID, maxPoints, missingKeys, emit); err != nil {
 				return err
 			}
 		}
 	}
-	return rows.Err()
+
+	return nil
+}
+
+func (db *DB) rebuildHistoryAgg(runID string, lineCount int) error {
+	// Collect all points using the regular bucket aggregation path
+	var points []ScalarPoint
+	if err := db.streamHistoryScalarsRegular(runID, aggTargetResolution, nil, func(p ScalarPoint) error {
+		points = append(points, p)
+		return nil
+	}); err != nil {
+		return fmt.Errorf("rebuild agg: %w", err)
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("DELETE FROM history_scalar_agg WHERE run_id = ?", runID); err != nil {
+		return err
+	}
+
+	stmt, err := tx.Prepare("INSERT INTO history_scalar_agg (run_id, key, bucket, step, value, min_value, max_value) VALUES (?, ?, ?, ?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	bucketNum := map[string]int{}
+	for _, p := range points {
+		b := bucketNum[p.Key]
+		bucketNum[p.Key] = b + 1
+		mn, mx := p.Value, p.Value
+		if p.Min != nil {
+			mn = *p.Min
+		}
+		if p.Max != nil {
+			mx = *p.Max
+		}
+		if _, err := stmt.Exec(runID, p.Key, b, p.Step, p.Value, mn, mx); err != nil {
+			return err
+		}
+	}
+
+	if _, err := tx.Exec("INSERT OR REPLACE INTO history_agg_meta (run_id, line_count) VALUES (?, ?)", runID, lineCount); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (db *DB) queryHistoryAgg(runID string, maxPoints int, filterKeys []string, emit func(ScalarPoint) error) (map[string]bool, error) {
+	placeholders := make([]string, len(filterKeys))
+	args := make([]interface{}, 0, 1+len(filterKeys))
+	args = append(args, runID)
+	for i, k := range filterKeys {
+		placeholders[i] = "?"
+		args = append(args, k)
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	factor := 1
+	if maxPoints > 0 && aggTargetResolution > maxPoints {
+		factor = aggTargetResolution / maxPoints
+	}
+
+	var query string
+	if factor <= 1 {
+		query = fmt.Sprintf(
+			"SELECT key, step, value, min_value, max_value FROM history_scalar_agg WHERE run_id = ? AND key IN (%s) ORDER BY key, bucket",
+			inClause)
+	} else {
+		query = fmt.Sprintf(
+			"SELECT key, AVG(step), AVG(value), MIN(min_value), MAX(max_value) FROM history_scalar_agg WHERE run_id = ? AND key IN (%s) GROUP BY key, bucket / %d ORDER BY key, bucket / %d",
+			inClause, factor, factor)
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	foundKeys := make(map[string]bool)
+	for rows.Next() {
+		var key string
+		var step, value, mn, mx float64
+		if err := rows.Scan(&key, &step, &value, &mn, &mx); err != nil {
+			return nil, err
+		}
+		foundKeys[key] = true
+		mnCopy, mxCopy := mn, mx
+		if err := emit(ScalarPoint{
+			Key: key, Step: step, Value: value,
+			Min: &mnCopy, Max: &mxCopy, Index: int(step),
+		}); err != nil {
+			return nil, err
+		}
+	}
+	return foundKeys, rows.Err()
+}
+
+func (db *DB) backfillHistoryAgg(runID string, keys []string) error {
+	var points []ScalarPoint
+	if err := db.streamHistoryScalarsRegular(runID, aggTargetResolution, keys, func(p ScalarPoint) error {
+		points = append(points, p)
+		return nil
+	}); err != nil {
+		return err
+	}
+	if len(points) == 0 {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.Prepare("INSERT INTO history_scalar_agg (run_id, key, bucket, step, value, min_value, max_value) VALUES (?, ?, ?, ?, ?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	bucketNum := map[string]int{}
+	for _, p := range points {
+		b := bucketNum[p.Key]
+		bucketNum[p.Key] = b + 1
+		mn, mx := p.Value, p.Value
+		if p.Min != nil {
+			mn = *p.Min
+		}
+		if p.Max != nil {
+			mx = *p.Max
+		}
+		if _, err := stmt.Exec(runID, p.Key, b, p.Step, p.Value, mn, mx); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
 }
 
 func emitHistoryRow(step int, data string, keySet map[string]bool, emit func(ScalarPoint) error) error {
