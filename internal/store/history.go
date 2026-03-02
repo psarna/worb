@@ -24,30 +24,27 @@ func (db *DB) InsertHistoryBatch(runID string, rows []struct {
 	return nil
 }
 
-func (db *DB) insertHistoryBatchDirect(runID string, rows []struct {
+type parsedScalar struct {
+	step  int
+	key   string
+	value float64
+	xStep *float64
+}
+
+type parsedHistogram struct {
+	step  int
+	key   string
+	xStep *float64
+	bins  string
+	vals  string
+}
+
+func parseHistoryRows(rows []struct {
 	Step int
 	Data json.RawMessage
-}) error {
-	if len(rows) == 0 {
-		return nil
-	}
-	tx, err := db.Begin()
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	scalarStmt, err := tx.Prepare("INSERT OR REPLACE INTO history_scalars (run_id, step, key, value, x_step) VALUES (?, ?, ?, ?, ?)")
-	if err != nil {
-		return fmt.Errorf("prepare scalar: %w", err)
-	}
-	defer scalarStmt.Close()
-
-	histStmt, err := tx.Prepare("INSERT OR REPLACE INTO history_histograms (run_id, step, key, x_step, bins, vals) VALUES (?, ?, ?, ?, ?, ?)")
-	if err != nil {
-		return fmt.Errorf("prepare histogram: %w", err)
-	}
-	defer histStmt.Close()
+}) ([]parsedScalar, []parsedHistogram) {
+	var scalars []parsedScalar
+	var histograms []parsedHistogram
 
 	for _, r := range rows {
 		var obj map[string]json.RawMessage
@@ -69,9 +66,7 @@ func (db *DB) insertHistoryBatchDirect(runID string, rows []struct {
 			}
 			var v float64
 			if json.Unmarshal(raw, &v) == nil {
-				if _, err := scalarStmt.Exec(runID, r.Step, key, v, xStep); err != nil {
-					return fmt.Errorf("insert scalar %s step %d: %w", key, r.Step, err)
-				}
+				scalars = append(scalars, parsedScalar{step: r.Step, key: key, value: v, xStep: xStep})
 				continue
 			}
 			var histObj struct {
@@ -82,14 +77,67 @@ func (db *DB) insertHistoryBatchDirect(runID string, rows []struct {
 			if json.Unmarshal(raw, &histObj) == nil && histObj.Type == "histogram" && len(histObj.Bins) >= 2 && len(histObj.Values) > 0 {
 				binsJSON, _ := json.Marshal(histObj.Bins)
 				valsJSON, _ := json.Marshal(histObj.Values)
-				if _, err := histStmt.Exec(runID, r.Step, key, xStep, string(binsJSON), string(valsJSON)); err != nil {
-					return fmt.Errorf("insert histogram %s step %d: %w", key, r.Step, err)
-				}
+				histograms = append(histograms, parsedHistogram{step: r.Step, key: key, xStep: xStep, bins: string(binsJSON), vals: string(valsJSON)})
 			}
 		}
 	}
+	return scalars, histograms
+}
 
-	if _, err := tx.Exec("UPDATE runs SET history_line_count = history_line_count + ?, updated_at = current_timestamp WHERE id = ?", len(rows), runID); err != nil {
+const multiRowSize = 100
+
+func (db *DB) insertParsedHistory(runID string, p *pendingHistory) error {
+	if len(p.scalars) == 0 && len(p.histograms) == 0 {
+		return nil
+	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	for i := 0; i < len(p.scalars); i += multiRowSize {
+		end := i + multiRowSize
+		if end > len(p.scalars) {
+			end = len(p.scalars)
+		}
+		chunk := p.scalars[i:end]
+		query := "INSERT OR IGNORE INTO history_scalars (run_id, step, key, value, x_step) VALUES "
+		args := make([]interface{}, 0, len(chunk)*5)
+		for j, s := range chunk {
+			if j > 0 {
+				query += ","
+			}
+			query += "(?,?,?,?,?)"
+			args = append(args, runID, s.step, s.key, s.value, s.xStep)
+		}
+		if _, err := tx.Exec(query, args...); err != nil {
+			return fmt.Errorf("insert scalars: %w", err)
+		}
+	}
+
+	for i := 0; i < len(p.histograms); i += multiRowSize {
+		end := i + multiRowSize
+		if end > len(p.histograms) {
+			end = len(p.histograms)
+		}
+		chunk := p.histograms[i:end]
+		query := "INSERT OR IGNORE INTO history_histograms (run_id, step, key, x_step, bins, vals) VALUES "
+		args := make([]interface{}, 0, len(chunk)*6)
+		for j, h := range chunk {
+			if j > 0 {
+				query += ","
+			}
+			query += "(?,?,?,?,?,?)"
+			args = append(args, runID, h.step, h.key, h.xStep, h.bins, h.vals)
+		}
+		if _, err := tx.Exec(query, args...); err != nil {
+			return fmt.Errorf("insert histograms: %w", err)
+		}
+	}
+
+	if _, err := tx.Exec("UPDATE runs SET history_line_count = history_line_count + ?, updated_at = current_timestamp WHERE id = ?", p.lineCount, runID); err != nil {
 		return fmt.Errorf("update line count: %w", err)
 	}
 

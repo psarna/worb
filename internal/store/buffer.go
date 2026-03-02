@@ -2,32 +2,32 @@ package store
 
 import (
 	"encoding/json"
+	"log"
 	"sync"
 	"time"
 )
 
 const (
 	bufferFlushInterval = 500 * time.Millisecond
-	bufferFlushSize     = 5000
 )
 
-type historyEntry struct {
-	Step int
-	Data json.RawMessage
+type pendingHistory struct {
+	scalars    []parsedScalar
+	histograms []parsedHistogram
+	lineCount  int
 }
 
 type writeBuffer struct {
 	mu      sync.Mutex
 	db      *DB
-	history map[string][]historyEntry
-	pending int
+	history map[string]*pendingHistory
 	timer   *time.Timer
 }
 
 func newWriteBuffer(db *DB) *writeBuffer {
 	return &writeBuffer{
 		db:      db,
-		history: make(map[string][]historyEntry),
+		history: make(map[string]*pendingHistory),
 	}
 }
 
@@ -35,61 +35,55 @@ func (b *writeBuffer) Add(runID string, rows []struct {
 	Step int
 	Data json.RawMessage
 }) {
+	scalars, histograms := parseHistoryRows(rows)
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	for _, r := range rows {
-		b.history[runID] = append(b.history[runID], historyEntry{Step: r.Step, Data: r.Data})
-		b.pending++
+	p := b.history[runID]
+	if p == nil {
+		p = &pendingHistory{}
+		b.history[runID] = p
 	}
-
-	if b.pending >= bufferFlushSize {
-		b.flushLocked()
-		return
-	}
+	p.scalars = append(p.scalars, scalars...)
+	p.histograms = append(p.histograms, histograms...)
+	p.lineCount += len(rows)
 
 	if b.timer == nil {
-		b.timer = time.AfterFunc(bufferFlushInterval, b.flushFromTimer)
+		b.timer = time.AfterFunc(bufferFlushInterval, b.flushAsync)
 	}
 }
 
-func (b *writeBuffer) flushFromTimer() {
+func (b *writeBuffer) flushAsync() {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.flushLocked()
-}
-
-func (b *writeBuffer) flushLocked() {
 	if b.timer != nil {
 		b.timer.Stop()
 		b.timer = nil
 	}
-
-	if b.pending == 0 {
-		return
-	}
-
 	toFlush := b.history
-	b.history = make(map[string][]historyEntry)
-	b.pending = 0
-
+	b.history = make(map[string]*pendingHistory)
 	b.mu.Unlock()
-	for runID, entries := range toFlush {
-		rows := make([]struct {
-			Step int
-			Data json.RawMessage
-		}, len(entries))
-		for i, e := range entries {
-			rows[i].Step = e.Step
-			rows[i].Data = e.Data
+
+	b.flush(toFlush)
+}
+
+func (b *writeBuffer) flush(batches map[string]*pendingHistory) {
+	for runID, p := range batches {
+		if err := b.db.insertParsedHistory(runID, p); err != nil {
+			log.Printf("buffer flush %s: %v", runID, err)
 		}
-		b.db.insertHistoryBatchDirect(runID, rows)
 	}
-	b.mu.Lock()
 }
 
 func (b *writeBuffer) Close() {
 	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.flushLocked()
+	if b.timer != nil {
+		b.timer.Stop()
+		b.timer = nil
+	}
+	toFlush := b.history
+	b.history = make(map[string]*pendingHistory)
+	b.mu.Unlock()
+
+	b.flush(toFlush)
 }
