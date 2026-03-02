@@ -10,18 +10,11 @@ import (
 // data belonging to soft-deleted runs and projects.
 func (db *DB) StartCleanup() {
 	go func() {
-		ticker := time.NewTicker(5 * time.Second)
+		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
-			for {
-				more, err := db.purgeDeletedData(5000)
-				if err != nil {
-					log.Printf("cleanup error: %v", err)
-					break
-				}
-				if !more {
-					break
-				}
+			if _, err := db.purgeDeletedData(5000); err != nil {
+				log.Printf("cleanup error: %v", err)
 			}
 		}
 	}()
@@ -60,20 +53,15 @@ func (db *DB) purgeDeletedData(batchSize int) (bool, error) {
 }
 
 func (db *DB) deleteBatch(table, column, id string, batchSize int) (int64, error) {
-	var res sql.Result
-	var err error
-	if db.isSQLite() {
-		res, err = db.Exec(
-			"DELETE FROM "+table+" WHERE rowid IN (SELECT rowid FROM "+table+" WHERE "+column+" = ? LIMIT ?)",
-			id, batchSize,
-		)
-	} else {
-		// DuckDB: delete all at once (no LIMIT support on DELETE)
-		res, err = db.Exec(
-			"DELETE FROM "+table+" WHERE "+column+" = ?",
-			id,
-		)
+	var query string
+	switch table {
+	case "history_scalars", "history_histograms":
+		// WITHOUT ROWID tables — use primary key subquery
+		query = "DELETE FROM " + table + " WHERE (" + column + ", key, step) IN (SELECT " + column + ", key, step FROM " + table + " WHERE " + column + " = ? LIMIT ?)"
+	default:
+		query = "DELETE FROM " + table + " WHERE rowid IN (SELECT rowid FROM " + table + " WHERE " + column + " = ? LIMIT ?)"
 	}
+	res, err := db.Exec(query, id, batchSize)
 	if err != nil {
 		return 0, err
 	}
