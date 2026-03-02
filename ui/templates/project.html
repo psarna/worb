@@ -1352,6 +1352,9 @@
                 loadedKeys.clear();
                 pendingKeys.clear();
                 render();
+                if (allKeyNames) {
+                    for (const key of allKeyNames) requestLazyLoad(key);
+                }
             }
         };
 

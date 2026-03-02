@@ -49,6 +49,7 @@ func (ft flexTime) Value() (driver.Value, error) {
 type DB struct {
 	*sql.DB
 	Engine string
+	buf    *writeBuffer
 }
 
 func (db *DB) castJSON(col string) string {
@@ -74,10 +75,11 @@ func New(dataDir, engine string) (*DB, error) {
 	switch engine {
 	case "sqlite":
 		dbPath := filepath.Join(dataDir, "worb.db")
-		db, err = sql.Open("sqlite", dbPath+"?_pragma=journal_mode(wal)&_pragma=foreign_keys(1)")
+		db, err = sql.Open("sqlite", dbPath+"?_pragma=journal_mode(wal)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
 		if err != nil {
 			return nil, fmt.Errorf("open sqlite: %w", err)
 		}
+		db.SetMaxOpenConns(2)
 	case "turso":
 		url := os.Getenv("TURSO_URL")
 		if url == "" {
@@ -102,9 +104,15 @@ func New(dataDir, engine string) (*DB, error) {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
+	store.buf = newWriteBuffer(store)
 	store.StartCleanup()
 
 	return store, nil
+}
+
+func (db *DB) Close() error {
+	db.buf.Close()
+	return db.DB.Close()
 }
 
 type QueryResult struct {

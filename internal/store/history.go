@@ -7,70 +7,24 @@ import (
 )
 
 func (db *DB) InsertHistory(runID string, step int, data json.RawMessage) error {
-	var obj map[string]json.RawMessage
-	if err := json.Unmarshal(data, &obj); err != nil {
-		return fmt.Errorf("parse history json: %w", err)
-	}
-
-	var xStep *float64
-	if raw, ok := obj["_step"]; ok {
-		var v float64
-		if json.Unmarshal(raw, &v) == nil {
-			xStep = &v
-		}
-	}
-
-	tx, err := db.Begin()
-	if err != nil {
-		return fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
-	scalarStmt, err := tx.Prepare("INSERT OR REPLACE INTO history_scalars (run_id, step, key, value, x_step) VALUES (?, ?, ?, ?, ?)")
-	if err != nil {
-		return fmt.Errorf("prepare scalar: %w", err)
-	}
-	defer scalarStmt.Close()
-
-	histStmt, err := tx.Prepare("INSERT OR REPLACE INTO history_histograms (run_id, step, key, x_step, bins, vals) VALUES (?, ?, ?, ?, ?, ?)")
-	if err != nil {
-		return fmt.Errorf("prepare histogram: %w", err)
-	}
-	defer histStmt.Close()
-
-	for key, raw := range obj {
-		if len(key) > 0 && key[0] == '_' || key == "step" {
-			continue
-		}
-		var v float64
-		if json.Unmarshal(raw, &v) == nil {
-			if _, err := scalarStmt.Exec(runID, step, key, v, xStep); err != nil {
-				return fmt.Errorf("insert scalar %s step %d: %w", key, step, err)
-			}
-			continue
-		}
-		var histObj struct {
-			Type   string    `json:"_type"`
-			Bins   []float64 `json:"bins"`
-			Values []float64 `json:"values"`
-		}
-		if json.Unmarshal(raw, &histObj) == nil && histObj.Type == "histogram" && len(histObj.Bins) >= 2 && len(histObj.Values) > 0 {
-			binsJSON, _ := json.Marshal(histObj.Bins)
-			valsJSON, _ := json.Marshal(histObj.Values)
-			if _, err := histStmt.Exec(runID, step, key, xStep, string(binsJSON), string(valsJSON)); err != nil {
-				return fmt.Errorf("insert histogram %s step %d: %w", key, step, err)
-			}
-		}
-	}
-
-	if _, err := tx.Exec("UPDATE runs SET history_line_count = history_line_count + 1, updated_at = current_timestamp WHERE id = ?", runID); err != nil {
-		return fmt.Errorf("update line count: %w", err)
-	}
-
-	return tx.Commit()
+	return db.InsertHistoryBatch(runID, []struct {
+		Step int
+		Data json.RawMessage
+	}{{Step: step, Data: data}})
 }
 
 func (db *DB) InsertHistoryBatch(runID string, rows []struct {
+	Step int
+	Data json.RawMessage
+}) error {
+	if len(rows) == 0 {
+		return nil
+	}
+	db.buf.Add(runID, rows)
+	return nil
+}
+
+func (db *DB) insertHistoryBatchDirect(runID string, rows []struct {
 	Step int
 	Data json.RawMessage
 }) error {
