@@ -835,12 +835,11 @@
         updateSidebar(runOrder, runColors);
 
         const PAGE_SIZE = 12;
-        const PARTIAL_SIZE = 6;
+        const INITIAL_SIZE = 6;
         const AUTO_COLLAPSE_THRESHOLD = 50;
         const MAX_CHART_POINTS = 1000;
 
         const collapsedCategories = new Set();
-        const partialCategories = new Set();
         const categoryElements = {};
         let searchFilter = '';
         const initializedCategories = new Set();
@@ -948,7 +947,7 @@
         document.getElementById('chart-search').addEventListener('input', (e) => {
             searchFilter = e.target.value.toLowerCase();
             for (const cat of Object.keys(categoryElements)) {
-                categoryElements[cat].page = 0;
+                categoryElements[cat].showLimit = INITIAL_SIZE;
             }
             scheduleRender();
         });
@@ -984,8 +983,7 @@
 
             destroyCategoryCharts(cat);
 
-            const isPartial = partialCategories.has(cat);
-            const displayKeys = isPartial ? keys.slice(0, PARTIAL_SIZE) : keys.slice(catEl.page * PAGE_SIZE, catEl.page * PAGE_SIZE + PAGE_SIZE);
+            const displayKeys = keys.slice(0, catEl.showLimit);
             catEl.renderedKeys = displayKeys;
 
             for (const key of displayKeys) {
@@ -993,45 +991,28 @@
                 chartObserver.observe(div);
             }
 
-            if (isPartial && keys.length > PARTIAL_SIZE) {
-                const btn = document.createElement('button');
-                btn.className = 'show-all-btn';
-                btn.textContent = `Show all ${keys.length} charts`;
-                btn.addEventListener('click', () => {
-                    partialCategories.delete(cat);
-                    catEl.page = 0;
-                    renderCategoryPage(cat);
-                    updatePageInfo(cat);
-                });
-                catEl.charts.appendChild(btn);
-            }
+            updateShowMoreBtn(cat);
         }
 
-        function updatePageInfo(cat) {
-            const catEl = categoryElements[cat];
-            if (!catEl || !catEl.pageInfo) return;
-            if (partialCategories.has(cat)) {
-                catEl.pageInfo.style.display = 'none';
-                return;
-            }
-            const totalPages = Math.max(1, Math.ceil(catEl.keys.length / PAGE_SIZE));
-            if (catEl.keys.length <= PAGE_SIZE) {
-                catEl.pageInfo.style.display = 'none';
-            } else {
-                catEl.pageInfo.style.display = '';
-                catEl.pageInfo.querySelector('.page-text').textContent = `${catEl.page + 1} / ${totalPages}`;
-                catEl.pageInfo.querySelector('.page-prev').disabled = catEl.page === 0;
-                catEl.pageInfo.querySelector('.page-next').disabled = catEl.page >= totalPages - 1;
-            }
-        }
-
-        function changePage(cat, delta) {
+        function updateShowMoreBtn(cat) {
             const catEl = categoryElements[cat];
             if (!catEl) return;
-            const totalPages = Math.max(1, Math.ceil(catEl.keys.length / PAGE_SIZE));
-            catEl.page = Math.max(0, Math.min(totalPages - 1, catEl.page + delta));
-            renderCategoryPage(cat);
-            updatePageInfo(cat);
+            let btn = catEl.charts.querySelector('.show-all-btn');
+            const remaining = catEl.keys.length - catEl.showLimit;
+            if (remaining > 0) {
+                if (!btn) {
+                    btn = document.createElement('button');
+                    btn.className = 'show-all-btn';
+                    btn.addEventListener('click', () => {
+                        catEl.showLimit += PAGE_SIZE;
+                        renderCategoryPage(cat);
+                    });
+                }
+                btn.textContent = `Show more charts (${remaining} remaining)`;
+                catEl.charts.appendChild(btn);
+            } else if (btn) {
+                btn.remove();
+            }
         }
 
         function toggleCategory(cat) {
@@ -1041,13 +1022,10 @@
                 collapsedCategories.delete(cat);
                 el.header.classList.remove('collapsed');
                 el.charts.classList.remove('hidden');
-                if (el.keys.length > PARTIAL_SIZE) partialCategories.add(cat);
-                el.page = 0;
+                el.showLimit = INITIAL_SIZE;
                 renderCategoryPage(cat);
-                updatePageInfo(cat);
             } else {
                 collapsedCategories.add(cat);
-                partialCategories.delete(cat);
                 el.header.classList.add('collapsed');
                 el.charts.classList.add('hidden');
                 destroyCategoryCharts(cat);
@@ -1061,7 +1039,7 @@
             }
             const shouldCollapse = totalCategories > 1 && initializedCategories.size > 0 && !initializedCategories.has(cat);
             if (shouldCollapse) collapsedCategories.add(cat);
-            else if (count > PARTIAL_SIZE) partialCategories.add(cat);
+            const isNew = !initializedCategories.has(cat);
             initializedCategories.add(cat);
 
             const section = document.createElement('div');
@@ -1069,19 +1047,8 @@
             const header = document.createElement('div');
             header.className = 'category-header' + (collapsedCategories.has(cat) ? ' collapsed' : '');
 
-            const pagination = document.createElement('div');
-            pagination.className = 'category-pagination';
-            pagination.innerHTML = `<button class="page-prev">&lsaquo;</button><span class="page-text">1 / 1</span><button class="page-next">&rsaquo;</button>`;
-            pagination.querySelector('.page-prev').addEventListener('click', (e) => { e.stopPropagation(); changePage(cat, -1); });
-            pagination.querySelector('.page-next').addEventListener('click', (e) => { e.stopPropagation(); changePage(cat, 1); });
-            pagination.style.display = 'none';
-
             header.innerHTML = `<svg class="category-toggle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg><span class="category-name">${cat}</span><span class="category-count">${count}</span>`;
-            header.appendChild(pagination);
-            header.addEventListener('click', (e) => {
-                if (e.target.closest('.category-pagination')) return;
-                toggleCategory(cat);
-            });
+            header.addEventListener('click', () => toggleCategory(cat));
             const chartsDiv = document.createElement('div');
             chartsDiv.className = 'category-charts' + (collapsedCategories.has(cat) ? ' hidden' : '');
             section.appendChild(header);
@@ -1090,8 +1057,7 @@
             categoryElements[cat] = {
                 section, header, charts: chartsDiv,
                 countEl: header.querySelector('.category-count'),
-                pageInfo: pagination,
-                page: 0,
+                showLimit: isNew ? INITIAL_SIZE : Infinity,
                 keys: [],
                 renderedKeys: [],
             };
@@ -1133,15 +1099,9 @@
                 catEl.section.style.display = '';
                 catEl.keys = keys;
 
-                const totalPages = Math.max(1, Math.ceil(keys.length / PAGE_SIZE));
-                if (catEl.page >= totalPages) catEl.page = totalPages - 1;
-
-                updatePageInfo(cat);
-
                 if (collapsedCategories.has(cat)) continue;
 
-                const isPartial = partialCategories.has(cat);
-                const displayKeys = isPartial ? keys.slice(0, PARTIAL_SIZE) : keys.slice(catEl.page * PAGE_SIZE, catEl.page * PAGE_SIZE + PAGE_SIZE);
+                const displayKeys = keys.slice(0, catEl.showLimit);
                 const displayKeySet = new Set(displayKeys);
 
                 for (const key of (catEl.renderedKeys || [])) {
@@ -1236,26 +1196,7 @@
                     if (div) catEl.charts.appendChild(div);
                 }
 
-                const existingBtn = catEl.charts.querySelector('.show-all-btn');
-                if (isPartial && keys.length > PARTIAL_SIZE) {
-                    if (existingBtn) {
-                        existingBtn.textContent = `Show all ${keys.length} charts`;
-                        catEl.charts.appendChild(existingBtn);
-                    } else {
-                        const btn = document.createElement('button');
-                        btn.className = 'show-all-btn';
-                        btn.textContent = `Show all ${keys.length} charts`;
-                        btn.addEventListener('click', () => {
-                            partialCategories.delete(cat);
-                            catEl.page = 0;
-                            renderCategoryPage(cat);
-                            updatePageInfo(cat);
-                        });
-                        catEl.charts.appendChild(btn);
-                    }
-                } else if (existingBtn) {
-                    existingBtn.remove();
-                }
+                updateShowMoreBtn(cat);
 
                 catEl.renderedKeys = displayKeys;
             }
@@ -1265,12 +1206,10 @@
             for (const cat of Object.keys(categoryElements)) {
                 if (collapsedCategories.has(cat)) {
                     collapsedCategories.delete(cat);
-                    if (categoryElements[cat].keys.length > PARTIAL_SIZE) partialCategories.add(cat);
                     categoryElements[cat].header.classList.remove('collapsed');
                     categoryElements[cat].charts.classList.remove('hidden');
-                    categoryElements[cat].page = 0;
+                    categoryElements[cat].showLimit = INITIAL_SIZE;
                     renderCategoryPage(cat);
-                    updatePageInfo(cat);
                 }
             }
         };
@@ -1279,7 +1218,6 @@
             for (const cat of Object.keys(categoryElements)) {
                 if (!collapsedCategories.has(cat)) {
                     collapsedCategories.add(cat);
-                    partialCategories.delete(cat);
                     categoryElements[cat].header.classList.add('collapsed');
                     categoryElements[cat].charts.classList.add('hidden');
                     destroyCategoryCharts(cat);
@@ -1295,7 +1233,6 @@
             }
             grid.innerHTML = '';
             for (const key of Object.keys(categoryElements)) delete categoryElements[key];
-            partialCategories.clear();
             initializedCategories.clear();
         }
 
