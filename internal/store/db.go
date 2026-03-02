@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"time"
 
-	_ "github.com/marcboeker/go-duckdb"
 	_ "github.com/tursodatabase/libsql-client-go/libsql"
 	_ "modernc.org/sqlite"
 )
@@ -53,14 +52,11 @@ type DB struct {
 }
 
 func (db *DB) castJSON(col string) string {
-	if db.Engine == "duckdb" {
-		return "CAST(" + col + " AS VARCHAR)"
-	}
 	return col
 }
 
 func (db *DB) isSQLite() bool {
-	return db.Engine == "sqlite" || db.Engine == "turso"
+	return true
 }
 
 func New(dataDir, engine string) (*DB, error) {
@@ -95,12 +91,6 @@ func New(dataDir, engine string) (*DB, error) {
 		db, err = sql.Open("libsql", dsn)
 		if err != nil {
 			return nil, fmt.Errorf("open turso: %w", err)
-		}
-	case "duckdb":
-		dbPath := filepath.Join(dataDir, "worb.duckdb")
-		db, err = sql.Open("duckdb", dbPath)
-		if err != nil {
-			return nil, fmt.Errorf("open duckdb: %w", err)
 		}
 	default:
 		return nil, fmt.Errorf("unsupported db engine: %s", engine)
@@ -175,10 +165,7 @@ func (db *DB) ExecuteQuery(query string) (*QueryResult, error) {
 }
 
 func (db *DB) migrate() error {
-	if db.isSQLite() {
-		return db.migrateSQLite()
-	}
-	return db.migrateDuckDB()
+	return db.migrateSQLite()
 }
 
 func (db *DB) migrateSQLite() error {
@@ -213,12 +200,23 @@ func (db *DB) migrateSQLite() error {
 			updated_at TEXT DEFAULT (datetime('now')),
 			heartbeat_at TEXT DEFAULT (datetime('now'))
 		)`,
-		`CREATE TABLE IF NOT EXISTS history (
+		`CREATE TABLE IF NOT EXISTS history_scalars (
 			run_id TEXT NOT NULL REFERENCES runs(id),
 			step INTEGER NOT NULL,
-			data TEXT NOT NULL,
-			timestamp TEXT DEFAULT (datetime('now'))
-		)`,
+			key TEXT NOT NULL,
+			value REAL NOT NULL,
+			x_step REAL,
+			PRIMARY KEY (run_id, key, step)
+		) WITHOUT ROWID`,
+		`CREATE TABLE IF NOT EXISTS history_histograms (
+			run_id TEXT NOT NULL REFERENCES runs(id),
+			step INTEGER NOT NULL,
+			key TEXT NOT NULL,
+			x_step REAL,
+			bins TEXT NOT NULL,
+			vals TEXT NOT NULL,
+			PRIMARY KEY (run_id, key, step)
+		) WITHOUT ROWID`,
 		`CREATE TABLE IF NOT EXISTS system_events (
 			run_id TEXT NOT NULL REFERENCES runs(id),
 			line_num INTEGER NOT NULL,
@@ -250,25 +248,9 @@ func (db *DB) migrateSQLite() error {
 			size INTEGER DEFAULT 0,
 			created_at TEXT DEFAULT (datetime('now'))
 		)`,
-		`CREATE INDEX IF NOT EXISTS idx_history_run_id ON history(run_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_history_run_step ON history(run_id, step)`,
 		`CREATE INDEX IF NOT EXISTS idx_system_events_run_id ON system_events(run_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_console_logs_run_id ON console_logs(run_id)`,
 		`CREATE INDEX IF NOT EXISTS idx_runs_project_id ON runs(project_id)`,
-		`CREATE TABLE IF NOT EXISTS history_scalar_agg (
-			run_id TEXT NOT NULL,
-			key TEXT NOT NULL,
-			bucket INTEGER NOT NULL,
-			step REAL NOT NULL,
-			value REAL NOT NULL,
-			min_value REAL NOT NULL,
-			max_value REAL NOT NULL
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_hsa_run_key ON history_scalar_agg(run_id, key)`,
-		`CREATE TABLE IF NOT EXISTS history_agg_meta (
-			run_id TEXT PRIMARY KEY,
-			line_count INTEGER NOT NULL DEFAULT 0
-		)`,
 	}
 
 	for _, m := range migrations {
@@ -284,107 +266,3 @@ func (db *DB) migrateSQLite() error {
 	return nil
 }
 
-func (db *DB) migrateDuckDB() error {
-	migrations := []string{
-		`CREATE TABLE IF NOT EXISTS projects (
-			id TEXT PRIMARY KEY,
-			entity TEXT NOT NULL DEFAULT 'local',
-			name TEXT NOT NULL,
-			created_at TIMESTAMP DEFAULT current_timestamp,
-			UNIQUE(entity, name)
-		)`,
-		`CREATE TABLE IF NOT EXISTS runs (
-			id TEXT PRIMARY KEY,
-			project_id TEXT NOT NULL REFERENCES projects(id),
-			name TEXT NOT NULL,
-			display_name TEXT,
-			config JSON,
-			summary JSON,
-			state TEXT DEFAULT 'running',
-			host TEXT,
-			program TEXT,
-			git_commit TEXT,
-			tags JSON DEFAULT '[]',
-			notes TEXT,
-			group_name TEXT,
-			job_type TEXT,
-			sweep_name TEXT,
-			history_line_count INTEGER DEFAULT 0,
-			events_line_count INTEGER DEFAULT 0,
-			log_line_count INTEGER DEFAULT 0,
-			created_at TIMESTAMP DEFAULT current_timestamp,
-			updated_at TIMESTAMP DEFAULT current_timestamp,
-			heartbeat_at TIMESTAMP DEFAULT current_timestamp
-		)`,
-		`CREATE TABLE IF NOT EXISTS history (
-			run_id TEXT NOT NULL REFERENCES runs(id),
-			step INTEGER NOT NULL,
-			data JSON NOT NULL,
-			timestamp TIMESTAMP DEFAULT current_timestamp
-		)`,
-		`CREATE TABLE IF NOT EXISTS system_events (
-			run_id TEXT NOT NULL REFERENCES runs(id),
-			line_num INTEGER NOT NULL,
-			data JSON NOT NULL,
-			timestamp TIMESTAMP DEFAULT current_timestamp
-		)`,
-		`CREATE TABLE IF NOT EXISTS console_logs (
-			run_id TEXT NOT NULL REFERENCES runs(id),
-			line_num INTEGER NOT NULL,
-			line TEXT NOT NULL,
-			stream TEXT DEFAULT 'stdout',
-			timestamp TIMESTAMP DEFAULT current_timestamp
-		)`,
-		`CREATE TABLE IF NOT EXISTS artifacts (
-			id TEXT PRIMARY KEY,
-			run_id TEXT NOT NULL REFERENCES runs(id),
-			type TEXT NOT NULL,
-			name TEXT NOT NULL,
-			digest TEXT,
-			state TEXT DEFAULT 'pending',
-			metadata JSON,
-			created_at TIMESTAMP DEFAULT current_timestamp
-		)`,
-		`CREATE TABLE IF NOT EXISTS files (
-			id TEXT PRIMARY KEY,
-			run_id TEXT NOT NULL REFERENCES runs(id),
-			name TEXT NOT NULL,
-			url TEXT,
-			size INTEGER DEFAULT 0,
-			created_at TIMESTAMP DEFAULT current_timestamp
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_history_run_id ON history(run_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_history_run_step ON history(run_id, step)`,
-		`CREATE INDEX IF NOT EXISTS idx_system_events_run_id ON system_events(run_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_console_logs_run_id ON console_logs(run_id)`,
-		`CREATE INDEX IF NOT EXISTS idx_runs_project_id ON runs(project_id)`,
-		`CREATE TABLE IF NOT EXISTS history_scalar_agg (
-			run_id TEXT NOT NULL,
-			key TEXT NOT NULL,
-			bucket INTEGER NOT NULL,
-			step DOUBLE NOT NULL,
-			value DOUBLE NOT NULL,
-			min_value DOUBLE NOT NULL,
-			max_value DOUBLE NOT NULL
-		)`,
-		`CREATE INDEX IF NOT EXISTS idx_hsa_run_key ON history_scalar_agg(run_id, key)`,
-		`CREATE TABLE IF NOT EXISTS history_agg_meta (
-			run_id TEXT PRIMARY KEY,
-			line_count INTEGER NOT NULL DEFAULT 0
-		)`,
-	}
-
-	for _, m := range migrations {
-		if _, err := db.Exec(m); err != nil {
-			return fmt.Errorf("migration failed: %w\nSQL: %s", err, m)
-		}
-	}
-
-	db.Exec("DROP TABLE IF EXISTS history_scalars")
-
-	// Additive migrations (ignore errors if columns already exist)
-	db.Exec("ALTER TABLE runs ADD COLUMN deleted_at TIMESTAMP")
-	db.Exec("ALTER TABLE projects ADD COLUMN deleted_at TIMESTAMP")
-
-	return nil
-}

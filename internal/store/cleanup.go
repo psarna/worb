@@ -42,7 +42,7 @@ func (db *DB) purgeDeletedData(batchSize int) (bool, error) {
 	}
 
 	// Delete data in batches from each table
-	dataTables := []string{"history", "system_events", "console_logs", "files", "artifacts", "history_scalar_agg"}
+	dataTables := []string{"history_scalars", "history_histograms", "system_events", "console_logs", "files", "artifacts"}
 	for _, table := range dataTables {
 		deleted, err := db.deleteBatch(table, "run_id", runID, batchSize)
 		if err != nil {
@@ -53,8 +53,6 @@ func (db *DB) purgeDeletedData(batchSize int) (bool, error) {
 		}
 	}
 
-	// All data gone — hard-delete metadata and the run itself
-	db.Exec("DELETE FROM history_agg_meta WHERE run_id = ?", runID)
 	if _, err := db.Exec("DELETE FROM runs WHERE id = ?", runID); err != nil {
 		return false, err
 	}

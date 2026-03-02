@@ -15,6 +15,11 @@
         </div>
     </header>
     <div class="container">
+        {{if .NotFound}}
+        <div style="background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; color: var(--text-secondary); font-size: 14px;">
+            Page <strong style="color: var(--text-primary);">{{.NotFound}}</strong> does not exist.
+        </div>
+        {{end}}
         <h2>Projects</h2>
         {{if .Projects}}
         {{range .Projects}}
