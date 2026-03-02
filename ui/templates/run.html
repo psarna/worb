@@ -48,6 +48,43 @@
                 <input type="text" class="chart-search" id="chart-search" placeholder="Filter metrics...">
                 <button class="expand-collapse-btn" id="expand-all-btn" onclick="expandAllCategories()">Expand All</button>
                 <button class="expand-collapse-btn" id="collapse-all-btn" onclick="collapseAllCategories()">Collapse All</button>
+                <button class="expand-collapse-btn" id="settings-btn" onclick="toggleSettings()">Settings</button>
+            </div>
+            <div class="chart-settings" id="chart-settings">
+                <div class="settings-section">
+                    <div class="settings-section-title">X axis</div>
+                    <div class="settings-row">
+                        <span class="settings-label">Range</span>
+                        <input type="number" class="settings-input" id="x-min" placeholder="Min" step="any">
+                        <input type="number" class="settings-input" id="x-max" placeholder="Max" step="any">
+                        <span class="settings-label" style="min-width:auto;">Log</span>
+                        <input type="checkbox" class="settings-toggle" id="x-log">
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <div class="settings-section-title">Y axis</div>
+                    <div class="settings-row">
+                        <span class="settings-label">Range</span>
+                        <input type="number" class="settings-input" id="y-min" placeholder="Min" step="any">
+                        <input type="number" class="settings-input" id="y-max" placeholder="Max" step="any">
+                        <span class="settings-label" style="min-width:auto;">Log</span>
+                        <input type="checkbox" class="settings-toggle" id="y-log">
+                    </div>
+                </div>
+                <div class="settings-section">
+                    <div class="settings-section-title">Smoothing</div>
+                    <div class="settings-row">
+                        <select class="settings-select" id="smooth-method">
+                            <option value="none">No smoothing</option>
+                            <option value="ema">Exponential moving avg</option>
+                            <option value="twema">Time weighted EMA</option>
+                            <option value="sma">Running average</option>
+                            <option value="gaussian">Gaussian</option>
+                        </select>
+                        <input type="range" class="settings-slider" id="smooth-slider" min="0" max="1" step="0.01" value="0.6">
+                        <input type="text" class="settings-value" id="smooth-value" value="0.6">
+                    </div>
+                </div>
             </div>
             <div id="chart-grid"></div>
             <div class="empty-state" id="no-charts" style="display:none;">No metrics logged yet.</div>
@@ -96,6 +133,94 @@ ORDER BY step LIMIT 20</textarea>
     const runHistoryLineCount = {{.Run.HistoryLineCount}};
     let loadingHistory = true;
     const projectID = "{{.Project.ID}}";
+
+    const chartSettings = {
+        xMin: '', xMax: '', xLog: false,
+        yMin: '', yMax: '', yLog: false,
+        smoothing: 'none',
+        smoothParam: 0.6,
+    };
+
+    function toggleSettings() {
+        document.getElementById('chart-settings').classList.toggle('open');
+    }
+
+    // Smoothing algorithms
+    function smoothEMA(data, param) {
+        if (param <= 0 || data.length < 2) return data;
+        const alpha = 1 - param;
+        const result = [{ x: data[0].x, y: data[0].y }];
+        for (let i = 1; i < data.length; i++) {
+            const prev = result[i - 1].y;
+            result.push({ x: data[i].x, y: alpha * data[i].y + (1 - alpha) * prev });
+        }
+        return result;
+    }
+
+    function smoothTWEMA(data, param) {
+        if (param <= 0 || data.length < 2) return data;
+        const xMin = data[0].x, xMax = data[data.length - 1].x;
+        const range = xMax - xMin;
+        if (range <= 0) return data;
+        const halfLife = range * param / 4;
+        const result = [{ x: data[0].x, y: data[0].y }];
+        for (let i = 1; i < data.length; i++) {
+            const dt = data[i].x - data[i - 1].x;
+            const w = Math.exp(-dt / halfLife);
+            result.push({ x: data[i].x, y: w * result[i - 1].y + (1 - w) * data[i].y });
+        }
+        return result;
+    }
+
+    function smoothSMA(data, param) {
+        if (param <= 0 || data.length < 2) return data;
+        const windowSize = Math.max(1, Math.floor(param * data.length / 2));
+        const result = [];
+        for (let i = 0; i < data.length; i++) {
+            let sum = 0, count = 0;
+            const lo = Math.max(0, i - windowSize);
+            const hi = Math.min(data.length - 1, i + windowSize);
+            for (let j = lo; j <= hi; j++) {
+                sum += data[j].y;
+                count++;
+            }
+            result.push({ x: data[i].x, y: sum / count });
+        }
+        return result;
+    }
+
+    function smoothGaussian(data, param) {
+        if (param <= 0 || data.length < 2) return data;
+        const xMin = data[0].x, xMax = data[data.length - 1].x;
+        const range = xMax - xMin;
+        if (range <= 0) return data;
+        const sigma = param * range / 10;
+        const cutoff = 3 * sigma;
+        const result = [];
+        for (let i = 0; i < data.length; i++) {
+            let wSum = 0, vSum = 0;
+            for (let j = 0; j < data.length; j++) {
+                const dx = data[j].x - data[i].x;
+                if (Math.abs(dx) > cutoff) continue;
+                const w = Math.exp(-0.5 * (dx / sigma) * (dx / sigma));
+                wSum += w;
+                vSum += w * data[j].y;
+            }
+            result.push({ x: data[i].x, y: wSum > 0 ? vSum / wSum : data[i].y });
+        }
+        return result;
+    }
+
+    function applySmoothing(data, method, param) {
+        if (!data || data.length < 2 || method === 'none' || param <= 0) return data;
+        switch (method) {
+            case 'ema': return smoothEMA(data, param);
+            case 'twema': return smoothTWEMA(data, param);
+            case 'sma': return smoothSMA(data, param);
+            case 'gaussian': return smoothGaussian(data, param);
+            default: return data;
+        }
+    }
 
     function deleteRun() {
         if (!confirm('Delete this run and all its data? This cannot be undone.')) return;
@@ -171,7 +296,7 @@ ORDER BY step LIMIT 20</textarea>
             for (let di = 0; di < chart.data.datasets.length; di++) {
                 if (!chart.isDatasetVisible(di)) continue;
                 const ds = chart.data.datasets[di];
-                if (ds._isBand) continue;
+                if (ds._isBand || ds._isGhost) continue;
                 const closest = findClosest(ds.data, xVal);
                 if (!closest) continue;
                 const yPx = chart.scales.y.getPixelForValue(closest.y);
@@ -211,7 +336,7 @@ ORDER BY step LIMIT 20</textarea>
         for (let di = 0; di < chart.data.datasets.length; di++) {
             if (!chart.isDatasetVisible(di)) continue;
             const ds = chart.data.datasets[di];
-            if (ds._isBand) continue;
+            if (ds._isBand || ds._isGhost) continue;
             const closest = findClosest(ds.data, xVal);
             if (!closest) continue;
             const color = ds.borderColor || '#58a6ff';
@@ -309,6 +434,11 @@ ORDER BY step LIMIT 20</textarea>
 
         const isBar = src.config.type === 'bar';
         const data = JSON.parse(JSON.stringify(src.data));
+        // Restore custom flags lost during JSON serialization
+        for (let i = 0; i < data.datasets.length; i++) {
+            if (src.data.datasets[i]._isBand) data.datasets[i]._isBand = true;
+            if (src.data.datasets[i]._isGhost) data.datasets[i]._isGhost = true;
+        }
         const resetBtn = container.querySelector('.zoom-reset-btn');
 
         const expandedChart = new Chart(container.querySelector('canvas'), isBar ? {
@@ -327,7 +457,16 @@ ORDER BY step LIMIT 20</textarea>
                 },
                 animation: false,
             }
-        } : {
+        } : (() => {
+            const exXType = chartSettings.xLog ? 'logarithmic' : 'linear';
+            const exYType = chartSettings.yLog ? 'logarithmic' : 'linear';
+            const exXScale = { type: exXType, title: { display: true, text: 'step', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } };
+            const exYScale = { type: exYType, title: { display: true, text: key, color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } };
+            if (chartSettings.xMin !== '') exXScale.min = Number(chartSettings.xMin);
+            if (chartSettings.xMax !== '') exXScale.max = Number(chartSettings.xMax);
+            if (chartSettings.yMin !== '') exYScale.min = Number(chartSettings.yMin);
+            if (chartSettings.yMax !== '') exYScale.max = Number(chartSettings.yMax);
+            return {
             type: 'line',
             data: data,
             options: {
@@ -335,6 +474,7 @@ ORDER BY step LIMIT 20</textarea>
                 parsing: false,
                 plugins: {
                     legend: { display: false },
+                    tooltip: { filter: (item) => { const ds = item.dataset; return !ds._isBand && !ds._isGhost; } },
                     zoom: {
                         zoom: {
                             drag: {
@@ -348,13 +488,10 @@ ORDER BY step LIMIT 20</textarea>
                         },
                     },
                 },
-                scales: {
-                    x: { type: 'linear', title: { display: true, text: 'step', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
-                    y: { title: { display: true, text: key, color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
-                },
+                scales: { x: exXScale, y: exYScale },
                 animation: false,
             }
-        });
+        }; })());
 
         everyChart.add(expandedChart);
 
@@ -443,44 +580,71 @@ ORDER BY step LIMIT 20</textarea>
             }
         } : (() => {
             const hasBands = points.length > 0 && points[0].min != null;
-            const datasets = hasBands ? [
-                {
+            const avgData = points.map(p => ({ x: p.step, y: p.value }));
+            const useSmoothing = chartSettings.smoothing !== 'none' && chartSettings.smoothParam > 0 && points.length >= 2;
+            const datasets = [];
+
+            if (hasBands && !useSmoothing) {
+                datasets.push({
                     label: '_min',
                     data: points.map(p => ({ x: p.step, y: p.min })),
-                    borderWidth: 0,
-                    pointRadius: 0,
-                    fill: false,
-                    _isBand: true,
-                },
-                {
+                    borderWidth: 0, pointRadius: 0, fill: false, _isBand: true,
+                });
+                datasets.push({
                     label: '_max',
                     data: points.map(p => ({ x: p.step, y: p.max })),
-                    borderWidth: 0,
-                    pointRadius: 0,
-                    backgroundColor: 'rgba(88,166,255,0.15)',
-                    fill: '-1',
-                    _isBand: true,
-                },
-                {
+                    borderWidth: 0, pointRadius: 0,
+                    backgroundColor: 'rgba(88,166,255,0.15)', fill: '-1', _isBand: true,
+                });
+            }
+
+            if (useSmoothing) {
+                // Ghost (original) line — transparent
+                datasets.push({
+                    label: '_ghost',
+                    data: avgData,
+                    borderColor: 'rgba(88,166,255,0.2)',
+                    backgroundColor: 'transparent',
+                    borderWidth: 1, pointRadius: 0, tension: 0.1, fill: false, _isGhost: true,
+                });
+                // Smoothed line
+                const smoothed = applySmoothing(avgData, chartSettings.smoothing, chartSettings.smoothParam);
+                datasets.push({
                     label: key,
-                    data: points.map(p => ({ x: p.step, y: p.value })),
+                    data: smoothed,
                     borderColor: '#58a6ff',
                     backgroundColor: 'transparent',
+                    borderWidth: 1.5, pointRadius: 0, tension: 0.1, fill: false,
+                });
+            } else {
+                datasets.push({
+                    label: key,
+                    data: avgData,
+                    borderColor: '#58a6ff',
+                    backgroundColor: hasBands ? 'transparent' : 'rgba(88,166,255,0.1)',
                     borderWidth: 1.5,
-                    pointRadius: 0,
+                    pointRadius: points.length < 3 ? 3 : 0,
                     tension: 0.1,
-                    fill: false,
-                },
-            ] : [{
-                label: key,
-                data: points.map(p => ({ x: p.step, y: p.value })),
-                borderColor: '#58a6ff',
-                backgroundColor: 'rgba(88,166,255,0.1)',
-                borderWidth: 1.5,
-                pointRadius: points.length < 3 ? 3 : 0,
-                tension: 0.1,
-                fill: true,
-            }];
+                    fill: !hasBands,
+                });
+            }
+
+            const xType = chartSettings.xLog ? 'logarithmic' : 'linear';
+            const yType = chartSettings.yLog ? 'logarithmic' : 'linear';
+            const xScale = {
+                type: xType,
+                ...(loadingHistory && runHistoryLineCount > 0 ? { suggestedMax: runHistoryLineCount } : {}),
+                title: { display: true, text: 'step', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' },
+            };
+            const yScale = {
+                type: yType,
+                title: { display: true, text: key, color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' },
+            };
+            if (chartSettings.xMin !== '') xScale.min = Number(chartSettings.xMin);
+            if (chartSettings.xMax !== '') xScale.max = Number(chartSettings.xMax);
+            if (chartSettings.yMin !== '') yScale.min = Number(chartSettings.yMin);
+            if (chartSettings.yMax !== '') yScale.max = Number(chartSettings.yMax);
+
             return {
             type: 'line',
             data: { datasets },
@@ -489,6 +653,7 @@ ORDER BY step LIMIT 20</textarea>
                 parsing: false,
                 plugins: {
                     legend: { display: false },
+                    tooltip: { filter: (item) => { const ds = item.dataset; return !ds._isBand && !ds._isGhost; } },
                     zoom: {
                         zoom: {
                             drag: {
@@ -505,14 +670,7 @@ ORDER BY step LIMIT 20</textarea>
                         },
                     },
                 },
-                scales: {
-                    x: {
-                        type: 'linear',
-                        ...(loadingHistory && runHistoryLineCount > 0 ? { suggestedMax: runHistoryLineCount } : {}),
-                        title: { display: true, text: 'step', color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' },
-                    },
-                    y: { title: { display: true, text: key, color: '#8b949e' }, ticks: { color: '#8b949e' }, grid: { color: '#30363d' } },
-                },
+                scales: { x: xScale, y: yScale },
                 animation: false,
             }
         }; })();
@@ -774,7 +932,7 @@ ORDER BY step LIMIT 20</textarea>
                 categoryElements[cat].countEl.textContent = count;
                 return categoryElements[cat];
             }
-            const shouldCollapse = count > AUTO_COLLAPSE_THRESHOLD && totalCategories > 1 && !initializedCategories.has(cat);
+            const shouldCollapse = totalCategories > 1 && initializedCategories.size > 0 && !initializedCategories.has(cat);
             if (shouldCollapse) collapsedCategories.add(cat);
             initializedCategories.add(cat);
 
@@ -1453,6 +1611,33 @@ ORDER BY step LIMIT 20</textarea>
             }
         }
     }
+
+    function reapplySettings() {
+        if (_rerenderAll) _rerenderAll();
+    }
+
+    // Settings event listeners
+    document.getElementById('x-min').addEventListener('input', (e) => { chartSettings.xMin = e.target.value; reapplySettings(); });
+    document.getElementById('x-max').addEventListener('input', (e) => { chartSettings.xMax = e.target.value; reapplySettings(); });
+    document.getElementById('y-min').addEventListener('input', (e) => { chartSettings.yMin = e.target.value; reapplySettings(); });
+    document.getElementById('y-max').addEventListener('input', (e) => { chartSettings.yMax = e.target.value; reapplySettings(); });
+    document.getElementById('x-log').addEventListener('change', (e) => { chartSettings.xLog = e.target.checked; reapplySettings(); });
+    document.getElementById('y-log').addEventListener('change', (e) => { chartSettings.yLog = e.target.checked; reapplySettings(); });
+    document.getElementById('smooth-method').addEventListener('change', (e) => { chartSettings.smoothing = e.target.value; reapplySettings(); });
+    document.getElementById('smooth-slider').addEventListener('input', (e) => {
+        chartSettings.smoothParam = parseFloat(e.target.value);
+        document.getElementById('smooth-value').value = e.target.value;
+        reapplySettings();
+    });
+    document.getElementById('smooth-value').addEventListener('change', (e) => {
+        let v = parseFloat(e.target.value);
+        if (isNaN(v)) v = 0;
+        v = Math.max(0, Math.min(1, v));
+        e.target.value = v;
+        chartSettings.smoothParam = v;
+        document.getElementById('smooth-slider').value = v;
+        reapplySettings();
+    });
 
     loadCharts();
     loadHistograms();

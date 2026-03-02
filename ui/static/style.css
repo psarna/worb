@@ -602,6 +602,112 @@ table tr:hover { background: rgba(255,255,255,0.02); }
 }
 .expand-collapse-btn:hover { color: var(--text); border-color: var(--text-secondary); }
 
+.chart-settings {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 16px 20px;
+    margin-bottom: 16px;
+    display: none;
+}
+.chart-settings.open { display: block; }
+
+.settings-section {
+    margin-bottom: 14px;
+}
+.settings-section:last-child { margin-bottom: 0; }
+
+.settings-section-title {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.settings-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+.settings-row:last-child { margin-bottom: 0; }
+
+.settings-label {
+    color: var(--text-secondary);
+    font-size: 13px;
+    min-width: 50px;
+}
+
+.settings-input {
+    width: 72px;
+    padding: 4px 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+}
+.settings-input:focus { border-color: var(--accent); outline: none; }
+.settings-input::placeholder { color: var(--text-secondary); opacity: 0.5; }
+
+.settings-select {
+    padding: 4px 8px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    cursor: pointer;
+}
+.settings-select:focus { border-color: var(--accent); outline: none; }
+
+.settings-slider {
+    flex: 1;
+    max-width: 180px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.settings-value {
+    width: 44px;
+    padding: 4px 6px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 13px;
+    font-family: inherit;
+    text-align: center;
+}
+.settings-value:focus { border-color: var(--accent); outline: none; }
+
+.settings-toggle {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    appearance: none;
+    -webkit-appearance: none;
+    background: var(--border);
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+.settings-toggle:checked { background: var(--accent); }
+.settings-toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    background: var(--text);
+    border-radius: 50%;
+    transition: transform 0.2s;
+}
+.settings-toggle:checked::after { transform: translateX(16px); }
+
 .category-pagination {
     display: flex;
     align-items: center;
