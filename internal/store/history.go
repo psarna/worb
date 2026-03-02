@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 )
 
 type HistoryRow struct {
@@ -73,6 +74,39 @@ func (db *DB) GetHistory(runID string) ([]HistoryRow, error) {
 	return result, nil
 }
 
+func (db *DB) GetHistoryKeys(runID string) ([]string, error) {
+	keySet := map[string]struct{}{}
+	for _, query := range []string{
+		fmt.Sprintf("SELECT %s FROM history WHERE run_id = ? ORDER BY step ASC LIMIT 1", db.castJSON("data")),
+		fmt.Sprintf("SELECT %s FROM history WHERE run_id = ? ORDER BY step DESC LIMIT 1", db.castJSON("data")),
+	} {
+		var data string
+		err := db.QueryRow(query, runID).Scan(&data)
+		if err != nil {
+			continue
+		}
+		var obj map[string]json.RawMessage
+		if json.Unmarshal([]byte(data), &obj) != nil {
+			continue
+		}
+		for key := range obj {
+			if len(key) > 0 && key[0] == '_' || key == "step" {
+				continue
+			}
+			var v float64
+			if json.Unmarshal(obj[key], &v) == nil {
+				keySet[key] = struct{}{}
+			}
+		}
+	}
+	keys := make([]string, 0, len(keySet))
+	for k := range keySet {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys, nil
+}
+
 type ScalarPoint struct {
 	Key   string   `json:"k"`
 	Step  float64  `json:"s"`
@@ -82,7 +116,19 @@ type ScalarPoint struct {
 	Index int      `json:"i"`
 }
 
-func (db *DB) StreamHistoryScalars(runID string, maxPoints int, emit func(ScalarPoint) error) error {
+func (db *DB) StreamHistoryScalars(runID string, maxPoints int, filterKeys []string, emit func(ScalarPoint) error) error {
+	if len(filterKeys) > 0 && db.isSQLite() {
+		return db.streamHistoryScalarsFast(runID, maxPoints, filterKeys, emit)
+	}
+
+	var keySet map[string]bool
+	if len(filterKeys) > 0 {
+		keySet = make(map[string]bool, len(filterKeys))
+		for _, k := range filterKeys {
+			keySet[k] = true
+		}
+	}
+
 	var totalRows int
 	needsBucket := false
 	bucketSize := 1
@@ -103,21 +149,19 @@ func (db *DB) StreamHistoryScalars(runID string, maxPoints int, emit func(Scalar
 	defer rows.Close()
 
 	if !needsBucket {
-		// Stream raw points without aggregation
 		for rows.Next() {
 			var step int
 			var data string
 			if err := rows.Scan(&step, &data); err != nil {
 				return err
 			}
-			if err := emitHistoryRow(step, data, emit); err != nil {
+			if err := emitHistoryRow(step, data, keySet, emit); err != nil {
 				return err
 			}
 		}
 		return rows.Err()
 	}
 
-	// Bucket aggregation
 	accum := map[string]*metricAccum{}
 	bucketStepSum := 0.0
 	bucketStepCount := 0
@@ -136,7 +180,6 @@ func (db *DB) StreamHistoryScalars(runID string, maxPoints int, emit func(Scalar
 				return err
 			}
 		}
-		// Reset
 		for k := range accum {
 			delete(accum, k)
 		}
@@ -152,7 +195,6 @@ func (db *DB) StreamHistoryScalars(runID string, maxPoints int, emit func(Scalar
 			return err
 		}
 
-		// Flush bucket when full
 		if rowIdx > 0 && rowIdx%bucketSize == 0 {
 			if err := flushBucket(); err != nil {
 				return err
@@ -180,6 +222,9 @@ func (db *DB) StreamHistoryScalars(runID string, maxPoints int, emit func(Scalar
 			if len(key) > 0 && key[0] == '_' || key == "step" {
 				continue
 			}
+			if keySet != nil && !keySet[key] {
+				continue
+			}
 			var v float64
 			if json.Unmarshal(raw, &v) != nil {
 				continue
@@ -200,14 +245,74 @@ func (db *DB) StreamHistoryScalars(runID string, maxPoints int, emit func(Scalar
 		}
 		rowIdx++
 	}
-	// Flush final bucket
 	if err := flushBucket(); err != nil {
 		return err
 	}
 	return rows.Err()
 }
 
-func emitHistoryRow(step int, data string, emit func(ScalarPoint) error) error {
+func (db *DB) streamHistoryScalarsFast(runID string, maxPoints int, filterKeys []string, emit func(ScalarPoint) error) error {
+	skipMod := 0
+	if maxPoints > 0 {
+		var totalRows int
+		if err := db.QueryRow("SELECT COUNT(*) FROM history WHERE run_id = ?", runID).Scan(&totalRows); err != nil {
+			return err
+		}
+		if totalRows > maxPoints {
+			skipMod = totalRows / maxPoints
+		}
+	}
+
+	cols := "step, json_extract(data, '$._step')"
+	for _, k := range filterKeys {
+		cols += fmt.Sprintf(`, json_extract(data, '$."%s"')`, k)
+	}
+
+	var query string
+	if skipMod > 1 {
+		query = fmt.Sprintf("SELECT %s FROM history WHERE run_id = ? AND (step %% %d) = 0 ORDER BY step", cols, skipMod)
+	} else {
+		query = fmt.Sprintf("SELECT %s FROM history WHERE run_id = ? ORDER BY step", cols)
+	}
+
+	rows, err := db.Query(query, runID)
+	if err != nil {
+		return db.StreamHistoryScalars(runID, maxPoints, nil, emit)
+	}
+	defer rows.Close()
+
+	nCols := 2 + len(filterKeys)
+	scanDest := make([]interface{}, nCols)
+	var step int
+	var xStepRaw *float64
+	scanDest[0] = &step
+	scanDest[1] = &xStepRaw
+	valPtrs := make([]*float64, len(filterKeys))
+	for i := range filterKeys {
+		scanDest[2+i] = &valPtrs[i]
+	}
+
+	for rows.Next() {
+		if err := rows.Scan(scanDest...); err != nil {
+			return err
+		}
+		xVal := float64(step)
+		if xStepRaw != nil {
+			xVal = *xStepRaw
+		}
+		for i, key := range filterKeys {
+			if valPtrs[i] == nil {
+				continue
+			}
+			if err := emit(ScalarPoint{Key: key, Step: xVal, Value: *valPtrs[i], Index: step}); err != nil {
+				return err
+			}
+		}
+	}
+	return rows.Err()
+}
+
+func emitHistoryRow(step int, data string, keySet map[string]bool, emit func(ScalarPoint) error) error {
 	var obj map[string]json.RawMessage
 	if json.Unmarshal([]byte(data), &obj) != nil {
 		return nil
@@ -223,6 +328,9 @@ func emitHistoryRow(step int, data string, emit func(ScalarPoint) error) error {
 
 	for key, raw := range obj {
 		if len(key) > 0 && key[0] == '_' || key == "step" {
+			continue
+		}
+		if keySet != nil && !keySet[key] {
 			continue
 		}
 		var v float64

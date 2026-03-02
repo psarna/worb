@@ -676,15 +676,94 @@ ORDER BY step LIMIT 20</textarea>
         let searchFilter = '';
         const initializedCategories = new Set();
 
+        const loadedKeys = new Set();
+        const pendingKeys = new Set();
+        let lazyQueue = [];
+        let lazyTimer = null;
+        const LAZY_BATCH_SIZE = 20;
+        const LAZY_DEBOUNCE_MS = 50;
+        let allKeyNames = null;
+
+        async function flushLazyQueue() {
+            lazyTimer = null;
+            if (lazyQueue.length === 0) return;
+            const batch = lazyQueue.splice(0);
+            for (const key of batch) pendingKeys.add(key);
+            for (let i = 0; i < batch.length; i += LAZY_BATCH_SIZE) {
+                const chunk = batch.slice(i, i + LAZY_BATCH_SIZE);
+                const keysParam = chunk.map(k => encodeURIComponent(k)).join(',');
+                try {
+                    const resp = await fetch(`/api/runs/${runID}/history?maxPoints=${MAX_CHART_POINTS}&keys=${keysParam}`);
+                    const reader = resp.body.getReader();
+                    const decoder = new TextDecoder();
+                    let buffer = '';
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        buffer += decoder.decode(value, { stream: true });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop();
+                        for (const line of lines) {
+                            if (!line) continue;
+                            const p = JSON.parse(line);
+                            if (!metrics[p.k]) metrics[p.k] = [];
+                            metrics[p.k].push({ step: p.s, value: p.v, min: p.min, max: p.max, index: p.i });
+                        }
+                        scheduleRender();
+                    }
+                    if (buffer.trim()) {
+                        const p = JSON.parse(buffer);
+                        if (!metrics[p.k]) metrics[p.k] = [];
+                        metrics[p.k].push({ step: p.s, value: p.v, min: p.min, max: p.max, index: p.i });
+                    }
+                    for (const key of chunk) {
+                        loadedKeys.add(key);
+                        pendingKeys.delete(key);
+                    }
+                    scheduleRender();
+                    if (allKeyNames && loadedKeys.size >= allKeyNames.length) {
+                        buildAndCacheFullData();
+                    }
+                } catch (e) {
+                    console.warn('worb: lazy fetch failed:', e);
+                    for (const key of chunk) pendingKeys.delete(key);
+                }
+            }
+        }
+
+        function requestLazyLoad(key) {
+            if (loadedKeys.has(key) || pendingKeys.has(key) || lazyQueue.includes(key)) return;
+            lazyQueue.push(key);
+            if (!lazyTimer) lazyTimer = setTimeout(flushLazyQueue, LAZY_DEBOUNCE_MS);
+        }
+
+        function buildAndCacheFullData() {
+            let fullText = '';
+            for (const key of Object.keys(metrics)) {
+                for (const p of metrics[key]) {
+                    fullText += JSON.stringify({ k: key, s: p.step, v: p.value, min: p.min, max: p.max, i: p.index }) + '\n';
+                }
+            }
+            setCachedHistory(runID, runHistoryLineCount, fullText);
+            loadingHistory = false;
+            scheduleRender();
+            loadHistograms();
+        }
+
         const chartObserver = new IntersectionObserver((entries) => {
             for (const entry of entries) {
                 if (!entry.isIntersecting) continue;
                 const div = entry.target;
                 const key = div.dataset.chartKey;
-                if (!key || allCharts[key]) continue;
-                const points = dedupeSorted(metrics[key]);
-                allCharts[key] = initChartOnDiv(div, key, points);
-                chartObserver.unobserve(div);
+                if (!key) continue;
+                if (!loadedKeys.has(key) && allKeyNames) {
+                    requestLazyLoad(key);
+                }
+                if (!allCharts[key] && metrics[key] && metrics[key].length > 0) {
+                    const points = dedupeSorted(metrics[key]);
+                    allCharts[key] = initChartOnDiv(div, key, points);
+                    chartObserver.unobserve(div);
+                }
             }
         }, { rootMargin: '200px' });
 
@@ -1027,6 +1106,9 @@ ORDER BY step LIMIT 20</textarea>
                         if (!div) {
                             div = createChartPlaceholder(catEl.charts, key);
                             chartObserver.observe(div);
+                        } else if (points.length > 0) {
+                            allCharts[key] = initChartOnDiv(div, key, points);
+                            chartObserver.unobserve(div);
                         }
                     }
                     const div = allCharts[key]?.canvas?.closest('.chart-container') || document.getElementById('cc-' + key.replace(/[^a-zA-Z0-9]/g, '_'));
@@ -1121,11 +1203,13 @@ ORDER BY step LIMIT 20</textarea>
         const cached = await getCachedHistory(runID);
         if (cached) {
             parseNdjson(cached.data);
+            for (const k of Object.keys(metrics)) loadedKeys.add(k);
             scheduleRender();
             if (cached.lineCount === runHistoryLineCount) {
                 console.log('worb: cache hit, skipping fetch', {cachedLines: cached.lineCount, expected: runHistoryLineCount});
                 loadingHistory = false;
                 scheduleRender();
+                loadHistograms();
                 return;
             }
             console.log('worb: cache stale', {cachedLines: cached.lineCount, expected: runHistoryLineCount});
@@ -1134,40 +1218,63 @@ ORDER BY step LIMIT 20</textarea>
         }
 
         for (const k in metrics) delete metrics[k];
-        const resp = await fetch(`/api/runs/${runID}/history?maxPoints=${MAX_CHART_POINTS}`);
-        const reader = resp.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let fullText = '';
-        while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value, { stream: true });
-            fullText += chunk;
-            buffer += chunk;
-            const lines = buffer.split('\n');
-            buffer = lines.pop();
-            for (const line of lines) {
-                if (!line) continue;
-                const p = JSON.parse(line);
-                if (!metrics[p.k]) metrics[p.k] = [];
-                metrics[p.k].push({ step: p.s, value: p.v, min: p.min, max: p.max, index: p.i });
+        loadedKeys.clear();
+
+        try {
+            const keysResp = await fetch(`/api/runs/${runID}/history/keys`);
+            allKeyNames = await keysResp.json();
+        } catch (e) {
+            console.warn('worb: keys endpoint failed, falling back to full fetch', e);
+            allKeyNames = null;
+        }
+
+        if (allKeyNames && allKeyNames.length > 0) {
+            for (const key of allKeyNames) {
+                metrics[key] = [];
             }
             scheduleRender();
-        }
-        if (buffer.trim()) {
-            fullText += '\n';
-            const p = JSON.parse(buffer);
-            if (!metrics[p.k]) metrics[p.k] = [];
-            metrics[p.k].push({ step: p.s, value: p.v, min: p.min, max: p.max, index: p.i });
+        } else if (allKeyNames && allKeyNames.length === 0) {
+            loadingHistory = false;
             scheduleRender();
-        }
-        await setCachedHistory(runID, runHistoryLineCount, fullText);
-        loadingHistory = false;
-        scheduleRender();
-
-        if (Object.keys(metrics).length === 0) {
             document.getElementById('no-charts').style.display = 'block';
+            return;
+        } else {
+            const resp = await fetch(`/api/runs/${runID}/history?maxPoints=${MAX_CHART_POINTS}`);
+            const reader = resp.body.getReader();
+            const decoder = new TextDecoder();
+            let buffer = '';
+            let fullText = '';
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value, { stream: true });
+                fullText += chunk;
+                buffer += chunk;
+                const lines = buffer.split('\n');
+                buffer = lines.pop();
+                for (const line of lines) {
+                    if (!line) continue;
+                    const p = JSON.parse(line);
+                    if (!metrics[p.k]) metrics[p.k] = [];
+                    metrics[p.k].push({ step: p.s, value: p.v, min: p.min, max: p.max, index: p.i });
+                }
+                scheduleRender();
+            }
+            if (buffer.trim()) {
+                fullText += '\n';
+                const p = JSON.parse(buffer);
+                if (!metrics[p.k]) metrics[p.k] = [];
+                metrics[p.k].push({ step: p.s, value: p.v, min: p.min, max: p.max, index: p.i });
+                scheduleRender();
+            }
+            for (const k of Object.keys(metrics)) loadedKeys.add(k);
+            await setCachedHistory(runID, runHistoryLineCount, fullText);
+            loadingHistory = false;
+            scheduleRender();
+            loadHistograms();
+            if (Object.keys(metrics).length === 0) {
+                document.getElementById('no-charts').style.display = 'block';
+            }
         }
     }
 
@@ -1628,7 +1735,6 @@ ORDER BY step LIMIT 20</textarea>
     });
 
     loadCharts();
-    loadHistograms();
     loadConfig();
     loadSummary();
     loadLogs();

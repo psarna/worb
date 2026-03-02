@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	gqlgraphql "github.com/99designs/gqlgen/graphql"
 	"github.com/99designs/gqlgen/graphql/handler"
@@ -104,6 +105,7 @@ func (s *Server) setupRoutes() {
 		r.Get("/projects/{projectID}/history", s.apiGetProjectHistory)
 		r.Get("/runs/{runID}", s.apiGetRun)
 		r.Get("/runs/{runID}/history", s.apiGetHistory)
+		r.Get("/runs/{runID}/history/keys", s.apiGetHistoryKeys)
 		r.Get("/runs/{runID}/histograms", s.apiGetHistograms)
 		r.Get("/runs/{runID}/logs", s.apiGetLogs)
 		r.Delete("/runs/{runID}", s.apiDeleteRun)
@@ -182,9 +184,24 @@ func (s *Server) apiDeleteRun(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
 }
 
+func (s *Server) apiGetHistoryKeys(w http.ResponseWriter, r *http.Request) {
+	runID := chi.URLParam(r, "runID")
+	keys, err := s.store.GetHistoryKeys(runID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(keys)
+}
+
 func (s *Server) apiGetHistory(w http.ResponseWriter, r *http.Request) {
 	runID := chi.URLParam(r, "runID")
 	maxPoints, _ := strconv.Atoi(r.URL.Query().Get("maxPoints"))
+	var filterKeys []string
+	if keysParam := r.URL.Query().Get("keys"); keysParam != "" {
+		filterKeys = strings.Split(keysParam, ",")
+	}
 
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -193,7 +210,7 @@ func (s *Server) apiGetHistory(w http.ResponseWriter, r *http.Request) {
 	enc := json.NewEncoder(w)
 	n := 0
 
-	err := s.store.StreamHistoryScalars(runID, maxPoints, func(p store.ScalarPoint) error {
+	err := s.store.StreamHistoryScalars(runID, maxPoints, filterKeys, func(p store.ScalarPoint) error {
 		if err := enc.Encode(p); err != nil {
 			return err
 		}
