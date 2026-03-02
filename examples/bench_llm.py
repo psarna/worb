@@ -388,8 +388,8 @@ def generate_step_metrics(step: int, cfg: Config, rng: random.Random, state: dic
 # ---------------------------------------------------------------------------
 
 def run_benchmark(cfg: Config):
-    os.environ["WANDB_BASE_URL"] = cfg.base_url
-    os.environ["WANDB_API_KEY"] = cfg.api_key
+    os.environ.setdefault("WANDB_BASE_URL", cfg.base_url)
+    os.environ.setdefault("WANDB_API_KEY", cfg.api_key)
 
     rng = random.Random(cfg.seed ^ int(time.time() * 1000))
 
