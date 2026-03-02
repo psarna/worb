@@ -17,6 +17,7 @@ import os
 import random
 import time
 from dataclasses import dataclass, field
+from datetime import datetime
 
 import wandb
 
@@ -390,7 +391,7 @@ def run_benchmark(cfg: Config):
     os.environ["WANDB_BASE_URL"] = cfg.base_url
     os.environ["WANDB_API_KEY"] = cfg.api_key
 
-    rng = random.Random(cfg.seed)
+    rng = random.Random(cfg.seed ^ int(time.time() * 1000))
 
     # per-expert popularity bias (seeded once, reused every step)
     expert_popularity = [1.0 / cfg.num_experts * (0.7 + 0.6 * rng.random()) for _ in range(cfg.num_experts)]
@@ -406,9 +407,10 @@ def run_benchmark(cfg: Config):
         "outlier_nodes": outlier_nodes,
     }
 
+    suffix = datetime.now().strftime("%m%d-%H%M%S")
     run = wandb.init(
         project=cfg.project,
-        name="moe-650b-10k-gpu",
+        name=f"moe-650b-10k-gpu-{suffix}",
         tags=["benchmark", "moe", "stress-test"],
         config={
             "model/total_params_b": cfg.total_params_b,
