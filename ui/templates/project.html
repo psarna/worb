@@ -861,6 +861,15 @@
             return false;
         }
 
+        function updateMaxHistoryLineCount() {
+            maxHistoryLineCount = 0;
+            for (const rid of runOrder) {
+                if (hiddenRuns.has(rid)) continue;
+                const lc = runLineCounts[rid] || 0;
+                if (lc > maxHistoryLineCount) maxHistoryLineCount = lc;
+            }
+        }
+
         async function flushLazyQueue() {
             lazyTimer = null;
             if (lazyQueue.length === 0) return;
@@ -902,6 +911,9 @@
                     for (const key of chunk) {
                         loadedKeys.add(key);
                         pendingKeys.delete(key);
+                    }
+                    if (allKeyNames && loadedKeys.size >= allKeyNames.length) {
+                        loadingHistory = false;
                     }
                     scheduleRender();
                 } catch (e) {
@@ -1289,6 +1301,8 @@
         }
 
         _onRunToggled = async function(runID) {
+            updateMaxHistoryLineCount();
+            loadingHistory = true;
             if (!loadedRuns.has(runID)) {
                 const keys = await loadRunKeys(runID);
                 for (const key of keys) {
@@ -1319,7 +1333,7 @@
             for (const key of allKeyNames) {
                 if (!metrics[key]) metrics[key] = {};
             }
-            loadingHistory = false;
+            updateMaxHistoryLineCount();
             render();
         }
 
