@@ -152,8 +152,10 @@ ORDER BY step LIMIT 20</textarea>
             ctx.lineWidth = 1;
             ctx.strokeStyle = 'rgba(139,148,158,0.5)';
             ctx.stroke();
-            for (const ds of chart.data.datasets) {
-                if (ds.hidden || !ds.data || ds.data.length === 0) continue;
+            for (let di = 0; di < chart.data.datasets.length; di++) {
+                if (!chart.isDatasetVisible(di)) continue;
+                const ds = chart.data.datasets[di];
+                if (!ds.data || ds.data.length === 0) continue;
                 let closest = ds.data[0], minDist = Math.abs((closest.x ?? 0) - xVal);
                 for (let i = 1; i < ds.data.length; i++) {
                     const d = Math.abs((ds.data[i].x ?? 0) - xVal);
@@ -194,8 +196,10 @@ ORDER BY step LIMIT 20</textarea>
         }
         const xScale = chart.scales.x;
         const rows = [];
-        for (const ds of chart.data.datasets) {
-            if (ds.hidden || !ds.data || ds.data.length === 0) continue;
+        for (let di = 0; di < chart.data.datasets.length; di++) {
+            if (!chart.isDatasetVisible(di)) continue;
+            const ds = chart.data.datasets[di];
+            if (!ds.data || ds.data.length === 0) continue;
             let closest = ds.data[0], minDist = Math.abs((closest.x ?? 0) - xVal);
             for (let i = 1; i < ds.data.length; i++) {
                 const d = Math.abs((ds.data[i].x ?? 0) - xVal);
@@ -215,9 +219,11 @@ ORDER BY step LIMIT 20</textarea>
         const canvasRect = chart.canvas.getBoundingClientRect();
         const containerRect = container.getBoundingClientRect();
         const canvasLeft = canvasRect.left - containerRect.left;
+        const canvasTop = canvasRect.top - containerRect.top;
         let left = canvasLeft + px - tipW / 2;
         left = Math.max(4, Math.min(left, container.offsetWidth - tipW - 4));
         tip.style.left = left + 'px';
+        tip.style.top = (canvasTop + chart.chartArea.top + 6) + 'px';
     }
 
     function hideCrosshairTooltip(chart) {

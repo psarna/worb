@@ -698,7 +698,6 @@ table tr:hover { background: rgba(255,255,255,0.02); }
 
 .crosshair-tooltip {
     position: absolute;
-    top: 6px;
     pointer-events: none;
     z-index: 10;
     background: var(--surface);
