@@ -719,12 +719,12 @@
             }
         }
 
-        function ensureCategory(cat, count) {
+        function ensureCategory(cat, count, totalCategories) {
             if (categoryElements[cat]) {
                 categoryElements[cat].countEl.textContent = count;
                 return categoryElements[cat];
             }
-            const shouldCollapse = count > AUTO_COLLAPSE_THRESHOLD && !initializedCategories.has(cat);
+            const shouldCollapse = count > AUTO_COLLAPSE_THRESHOLD && totalCategories > 1 && !initializedCategories.has(cat);
             if (shouldCollapse) collapsedCategories.add(cat);
             initializedCategories.add(cat);
 
@@ -793,7 +793,7 @@
 
             for (const cat of catOrder) {
                 const keys = categories[cat];
-                const catEl = ensureCategory(cat, keys.length);
+                const catEl = ensureCategory(cat, keys.length, catOrder.length);
                 catEl.section.style.display = '';
                 catEl.keys = keys;
 
