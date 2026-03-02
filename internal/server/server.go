@@ -109,6 +109,7 @@ func (s *Server) setupRoutes() {
 		r.Get("/runs/{runID}/histograms", s.apiGetHistograms)
 		r.Get("/runs/{runID}/logs", s.apiGetLogs)
 		r.Delete("/runs/{runID}", s.apiDeleteRun)
+		r.Delete("/projects/{projectID}", s.apiDeleteProject)
 		r.Post("/query", s.apiQuery)
 	})
 
@@ -177,6 +178,16 @@ func (s *Server) apiGetRun(w http.ResponseWriter, r *http.Request) {
 func (s *Server) apiDeleteRun(w http.ResponseWriter, r *http.Request) {
 	runID := chi.URLParam(r, "runID")
 	if err := s.store.DeleteRun(runID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+}
+
+func (s *Server) apiDeleteProject(w http.ResponseWriter, r *http.Request) {
+	projectID := chi.URLParam(r, "projectID")
+	if err := s.store.DeleteProject(projectID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

@@ -94,9 +94,13 @@ h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
     border-radius: 6px;
     color: var(--text-secondary);
     cursor: pointer;
-    padding: 4px 12px;
+    padding: 4px 6px;
     font-size: 13px;
     font-family: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
 }
 .btn-delete:hover { color: var(--red); border-color: var(--red); }
 

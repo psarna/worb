@@ -112,6 +112,8 @@ func New(dataDir, engine string) (*DB, error) {
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
+	store.StartCleanup()
+
 	return store, nil
 }
 
@@ -275,6 +277,10 @@ func (db *DB) migrateSQLite() error {
 		}
 	}
 
+	// Additive migrations (ignore errors if columns already exist)
+	db.Exec("ALTER TABLE runs ADD COLUMN deleted_at TEXT")
+	db.Exec("ALTER TABLE projects ADD COLUMN deleted_at TEXT")
+
 	return nil
 }
 
@@ -375,6 +381,10 @@ func (db *DB) migrateDuckDB() error {
 	}
 
 	db.Exec("DROP TABLE IF EXISTS history_scalars")
+
+	// Additive migrations (ignore errors if columns already exist)
+	db.Exec("ALTER TABLE runs ADD COLUMN deleted_at TIMESTAMP")
+	db.Exec("ALTER TABLE projects ADD COLUMN deleted_at TIMESTAMP")
 
 	return nil
 }

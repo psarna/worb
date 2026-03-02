@@ -48,7 +48,7 @@ func (db *DB) EnsureProject(entity, name string) (*Project, error) {
 
 	var p Project
 	var createdAt flexTime
-	err := db.QueryRow("SELECT id, entity, name, created_at FROM projects WHERE entity = ? AND name = ?", entity, name).
+	err := db.QueryRow("SELECT id, entity, name, created_at FROM projects WHERE entity = ? AND name = ? AND deleted_at IS NULL", entity, name).
 		Scan(&p.ID, &p.Entity, &p.Name, &createdAt)
 	p.CreatedAt = createdAt.Time
 	if err == nil {
@@ -103,11 +103,11 @@ func (db *DB) UpsertRun(p UpsertRunParams) (*Run, error) {
 	}
 
 	var existing string
-	err := db.QueryRow("SELECT id FROM runs WHERE id = ?", p.ID).Scan(&existing)
+	err := db.QueryRow("SELECT id FROM runs WHERE id = ? AND deleted_at IS NULL", p.ID).Scan(&existing)
 	if err == sql.ErrNoRows && !clientSentID && p.Name != "" {
 		proj, projErr := db.EnsureProject(p.Entity, p.Project)
 		if projErr == nil {
-			lookupErr := db.QueryRow("SELECT id FROM runs WHERE project_id = ? AND name = ?", proj.ID, p.Name).Scan(&existing)
+			lookupErr := db.QueryRow("SELECT id FROM runs WHERE project_id = ? AND name = ? AND deleted_at IS NULL", proj.ID, p.Name).Scan(&existing)
 			if lookupErr == nil {
 				p.ID = existing
 				err = nil
@@ -200,7 +200,7 @@ func (db *DB) GetRun(id string) (*Run, error) {
 		r.host, r.program, r.git_commit, %s, r.notes, r.group_name, r.job_type, r.sweep_name,
 		r.history_line_count, r.events_line_count, r.log_line_count,
 		r.created_at, r.updated_at, r.heartbeat_at
-		FROM runs r WHERE r.id = ?`, db.castJSON("r.config"), db.castJSON("r.summary"), db.castJSON("r.tags")), id).
+		FROM runs r WHERE r.id = ? AND r.deleted_at IS NULL`, db.castJSON("r.config"), db.castJSON("r.summary"), db.castJSON("r.tags")), id).
 		Scan(&r.ID, &r.ProjectID, &r.Name, &displayName, &config, &summary, &r.State,
 			&host, &program, &gitCommit, &tags, &notes, &groupName, &jobType, &sweepName,
 			&r.HistoryLineCount, &r.EventsLineCount, &r.LogLineCount,
@@ -233,7 +233,7 @@ func (db *DB) GetRun(id string) (*Run, error) {
 
 func (db *DB) GetRunByName(projectID, name string) (*Run, error) {
 	var id string
-	err := db.QueryRow("SELECT id FROM runs WHERE project_id = ? AND name = ?", projectID, name).Scan(&id)
+	err := db.QueryRow("SELECT id FROM runs WHERE project_id = ? AND name = ? AND deleted_at IS NULL", projectID, name).Scan(&id)
 	if err != nil {
 		return nil, err
 	}
@@ -241,7 +241,7 @@ func (db *DB) GetRunByName(projectID, name string) (*Run, error) {
 }
 
 func (db *DB) ListRuns(projectID string) ([]*Run, error) {
-	rows, err := db.Query(`SELECT id FROM runs WHERE project_id = ? ORDER BY created_at DESC`, projectID)
+	rows, err := db.Query(`SELECT id FROM runs WHERE project_id = ? AND deleted_at IS NULL ORDER BY created_at DESC`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -263,31 +263,40 @@ func (db *DB) ListRuns(projectID string) ([]*Run, error) {
 }
 
 func (db *DB) DeleteRun(runID string) error {
+	res, err := db.Exec("UPDATE runs SET deleted_at = current_timestamp WHERE id = ? AND deleted_at IS NULL", runID)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("run not found: %s", runID)
+	}
+	return nil
+}
+
+func (db *DB) DeleteProject(projectID string) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback()
 
-	tables := []string{"files", "artifacts", "console_logs", "system_events", "history", "history_scalar_agg", "history_agg_meta"}
-	for _, table := range tables {
-		if _, err := tx.Exec("DELETE FROM "+table+" WHERE run_id = ?", runID); err != nil {
-			return fmt.Errorf("delete from %s: %w", table, err)
-		}
+	if _, err := tx.Exec("UPDATE runs SET deleted_at = current_timestamp WHERE project_id = ? AND deleted_at IS NULL", projectID); err != nil {
+		return fmt.Errorf("soft-delete runs: %w", err)
 	}
-	res, err := tx.Exec("DELETE FROM runs WHERE id = ?", runID)
+	res, err := tx.Exec("UPDATE projects SET deleted_at = current_timestamp WHERE id = ? AND deleted_at IS NULL", projectID)
 	if err != nil {
-		return fmt.Errorf("delete run: %w", err)
+		return fmt.Errorf("soft-delete project: %w", err)
 	}
 	n, _ := res.RowsAffected()
 	if n == 0 {
-		return fmt.Errorf("run not found: %s", runID)
+		return fmt.Errorf("project not found: %s", projectID)
 	}
 	return tx.Commit()
 }
 
 func (db *DB) ListRunsFiltered(projectID string, displayName string) ([]*Run, error) {
-	query := `SELECT id FROM runs WHERE project_id = ?`
+	query := `SELECT id FROM runs WHERE project_id = ? AND deleted_at IS NULL`
 	args := []any{projectID}
 	if displayName != "" {
 		query += ` AND display_name = ?`
@@ -324,9 +333,9 @@ func (db *DB) ListProjects(entity string) ([]*Project, error) {
 	var rows *sql.Rows
 	var err error
 	if entity == "" {
-		rows, err = db.Query("SELECT id, entity, name, created_at FROM projects ORDER BY created_at DESC")
+		rows, err = db.Query("SELECT id, entity, name, created_at FROM projects WHERE deleted_at IS NULL ORDER BY created_at DESC")
 	} else {
-		rows, err = db.Query("SELECT id, entity, name, created_at FROM projects WHERE entity = ? ORDER BY created_at DESC", entity)
+		rows, err = db.Query("SELECT id, entity, name, created_at FROM projects WHERE entity = ? AND deleted_at IS NULL ORDER BY created_at DESC", entity)
 	}
 	if err != nil {
 		return nil, err
@@ -349,7 +358,7 @@ func (db *DB) ListProjects(entity string) ([]*Project, error) {
 func (db *DB) GetProject(id string) (*Project, error) {
 	p := &Project{}
 	var ca flexTime
-	err := db.QueryRow("SELECT id, entity, name, created_at FROM projects WHERE id = ?", id).
+	err := db.QueryRow("SELECT id, entity, name, created_at FROM projects WHERE id = ? AND deleted_at IS NULL", id).
 		Scan(&p.ID, &p.Entity, &p.Name, &ca)
 	if err != nil {
 		return nil, err
@@ -361,7 +370,7 @@ func (db *DB) GetProject(id string) (*Project, error) {
 func (db *DB) GetProjectByName(entity, name string) (*Project, error) {
 	p := &Project{}
 	var ca flexTime
-	err := db.QueryRow("SELECT id, entity, name, created_at FROM projects WHERE entity = ? AND name = ?", entity, name).
+	err := db.QueryRow("SELECT id, entity, name, created_at FROM projects WHERE entity = ? AND name = ? AND deleted_at IS NULL", entity, name).
 		Scan(&p.ID, &p.Entity, &p.Name, &ca)
 	if err != nil {
 		return nil, err

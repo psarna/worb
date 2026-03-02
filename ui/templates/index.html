@@ -19,9 +19,14 @@
         {{if .Projects}}
         {{range .Projects}}
         <a href="/projects/{{.ID}}" style="text-decoration: none; color: inherit;">
-            <div class="card">
-                <h3>{{.Name}}</h3>
-                <div class="meta">{{.Entity}} &middot; Created {{.CreatedAt.Format "2006-01-02 15:04"}}</div>
+            <div class="card" id="project-{{.ID}}">
+                <div style="display: flex; align-items: flex-start; justify-content: space-between;">
+                    <div>
+                        <h3>{{.Name}}</h3>
+                        <div class="meta">{{.Entity}} &middot; Created {{.CreatedAt.Format "2006-01-02 15:04"}}</div>
+                    </div>
+                    <button class="btn-delete" onclick="event.preventDefault(); event.stopPropagation(); deleteProject('{{.ID}}')" title="Delete project"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5.33 4V2.67a1.33 1.33 0 011.34-1.34h2.66a1.33 1.33 0 011.34 1.34V4M12.67 4v9.33a1.33 1.33 0 01-1.34 1.34H4.67a1.33 1.33 0 01-1.34-1.34V4h9.34z"/></svg></button>
+                </div>
             </div>
         </a>
         {{end}}
@@ -34,5 +39,13 @@
         </div>
         {{end}}
     </div>
+    <script>
+    function deleteProject(projectID) {
+        if (!confirm('Delete this project and all its runs? This cannot be undone.')) return;
+        fetch('/api/projects/' + projectID, { method: 'DELETE' })
+            .then(r => { if (r.ok) { const card = document.getElementById('project-' + projectID); if (card) card.closest('a').remove(); } else return r.text().then(t => { throw new Error(t); }); })
+            .catch(e => alert('Failed to delete project: ' + e.message));
+    }
+    </script>
 </body>
 </html>
