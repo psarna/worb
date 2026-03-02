@@ -119,9 +119,9 @@ type ScalarPoint struct {
 
 const aggTargetResolution = 2000
 
-func (db *DB) StreamHistoryScalars(runID string, maxPoints int, filterKeys []string, emit func(ScalarPoint) error) error {
+func (db *DB) StreamHistoryScalars(runID string, maxPoints int, filterKeys []string, xMin, xMax *float64, emit func(ScalarPoint) error) error {
 	if len(filterKeys) > 0 && db.isSQLite() {
-		return db.streamHistoryScalarsFast(runID, maxPoints, filterKeys, emit)
+		return db.streamHistoryScalarsFast(runID, maxPoints, filterKeys, xMin, xMax, emit)
 	}
 	return db.streamHistoryScalarsRegular(runID, maxPoints, filterKeys, emit)
 }
@@ -257,23 +257,50 @@ func (db *DB) streamHistoryScalarsRegular(runID string, maxPoints int, filterKey
 	return rows.Err()
 }
 
-func (db *DB) streamHistoryScalarsFast(runID string, maxPoints int, filterKeys []string, emit func(ScalarPoint) error) error {
+func (db *DB) streamHistoryScalarsFast(runID string, maxPoints int, filterKeys []string, xMin, xMax *float64, emit func(ScalarPoint) error) error {
 	var totalRows int
-	if maxPoints > 0 {
-		if err := db.QueryRow("SELECT COUNT(*) FROM history WHERE run_id = ?", runID).Scan(&totalRows); err != nil {
-			return err
-		}
+	if err := db.QueryRow("SELECT COUNT(*) FROM history WHERE run_id = ?", runID).Scan(&totalRows); err != nil {
+		return err
 	}
 
-	if maxPoints == 0 || totalRows <= maxPoints {
+	// When x range is set, count rows in range (using step column as approximation)
+	// to decide whether downsampling is needed for the visible portion
+	effectiveRows := totalRows
+	hasRange := xMin != nil || xMax != nil
+	if hasRange && maxPoints > 0 {
+		countQuery := "SELECT COUNT(*) FROM history WHERE run_id = ?"
+		countArgs := []interface{}{runID}
+		if xMin != nil {
+			countQuery += " AND step >= ?"
+			countArgs = append(countArgs, int(*xMin))
+		}
+		if xMax != nil {
+			countQuery += " AND step <= ?"
+			countArgs = append(countArgs, int(*xMax))
+		}
+		db.QueryRow(countQuery, countArgs...).Scan(&effectiveRows)
+	}
+
+	if maxPoints == 0 || effectiveRows <= maxPoints {
 		// No downsampling needed — emit individual points via json_extract
 		cols := "step, json_extract(data, '$._step')"
 		for _, k := range filterKeys {
 			cols += fmt.Sprintf(`, json_extract(data, '$."%s"')`, k)
 		}
-		query := fmt.Sprintf("SELECT %s FROM history WHERE run_id = ? ORDER BY step", cols)
+		// Use indexed step column in WHERE for speed; exact _step filtering in Go
+		where := "run_id = ?"
+		args := []interface{}{runID}
+		if xMin != nil {
+			where += " AND step >= ?"
+			args = append(args, int(*xMin))
+		}
+		if xMax != nil {
+			where += " AND step <= ?"
+			args = append(args, int(*xMax))
+		}
+		query := fmt.Sprintf("SELECT %s FROM history WHERE %s ORDER BY step", cols, where)
 
-		rows, err := db.Query(query, runID)
+		rows, err := db.Query(query, args...)
 		if err != nil {
 			return db.streamHistoryScalarsRegular(runID, maxPoints, filterKeys, emit)
 		}
@@ -298,6 +325,13 @@ func (db *DB) streamHistoryScalarsFast(runID string, maxPoints int, filterKeys [
 			if xStepRaw != nil {
 				xVal = *xStepRaw
 			}
+			// Exact range check on the actual _step value
+			if xMin != nil && xVal < *xMin {
+				continue
+			}
+			if xMax != nil && xVal > *xMax {
+				continue
+			}
 			for i, key := range filterKeys {
 				if valPtrs[i] == nil {
 					continue
@@ -321,7 +355,7 @@ func (db *DB) streamHistoryScalarsFast(runID string, maxPoints int, filterKeys [
 		}
 	}
 
-	foundKeys, err := db.queryHistoryAgg(runID, maxPoints, filterKeys, emit)
+	foundKeys, err := db.queryHistoryAgg(runID, maxPoints, filterKeys, xMin, xMax, emit)
 	if err != nil {
 		return err
 	}
@@ -335,7 +369,7 @@ func (db *DB) streamHistoryScalarsFast(runID string, maxPoints int, filterKeys [
 	}
 	if len(missingKeys) > 0 {
 		if err := db.backfillHistoryAgg(runID, missingKeys); err == nil {
-			if _, err := db.queryHistoryAgg(runID, maxPoints, missingKeys, emit); err != nil {
+			if _, err := db.queryHistoryAgg(runID, maxPoints, missingKeys, xMin, xMax, emit); err != nil {
 				return err
 			}
 		}
@@ -393,7 +427,7 @@ func (db *DB) rebuildHistoryAgg(runID string, lineCount int) error {
 	return tx.Commit()
 }
 
-func (db *DB) queryHistoryAgg(runID string, maxPoints int, filterKeys []string, emit func(ScalarPoint) error) (map[string]bool, error) {
+func (db *DB) queryHistoryAgg(runID string, maxPoints int, filterKeys []string, xMin, xMax *float64, emit func(ScalarPoint) error) (map[string]bool, error) {
 	placeholders := make([]string, len(filterKeys))
 	args := make([]interface{}, 0, 1+len(filterKeys))
 	args = append(args, runID)
@@ -403,6 +437,17 @@ func (db *DB) queryHistoryAgg(runID string, maxPoints int, filterKeys []string, 
 	}
 	inClause := strings.Join(placeholders, ",")
 
+	// Step range filter (agg table step is in _step coordinate space)
+	stepFilter := ""
+	if xMin != nil {
+		stepFilter += " AND step >= ?"
+		args = append(args, *xMin)
+	}
+	if xMax != nil {
+		stepFilter += " AND step <= ?"
+		args = append(args, *xMax)
+	}
+
 	factor := 1
 	if maxPoints > 0 && aggTargetResolution > maxPoints {
 		factor = aggTargetResolution / maxPoints
@@ -411,12 +456,12 @@ func (db *DB) queryHistoryAgg(runID string, maxPoints int, filterKeys []string, 
 	var query string
 	if factor <= 1 {
 		query = fmt.Sprintf(
-			"SELECT key, step, value, min_value, max_value FROM history_scalar_agg WHERE run_id = ? AND key IN (%s) ORDER BY key, bucket",
-			inClause)
+			"SELECT key, step, value, min_value, max_value FROM history_scalar_agg WHERE run_id = ? AND key IN (%s)%s ORDER BY key, bucket",
+			inClause, stepFilter)
 	} else {
 		query = fmt.Sprintf(
-			"SELECT key, AVG(step), AVG(value), MIN(min_value), MAX(max_value) FROM history_scalar_agg WHERE run_id = ? AND key IN (%s) GROUP BY key, bucket / %d ORDER BY key, bucket / %d",
-			inClause, factor, factor)
+			"SELECT key, AVG(step), AVG(value), MIN(min_value), MAX(max_value) FROM history_scalar_agg WHERE run_id = ? AND key IN (%s)%s GROUP BY key, bucket / %d ORDER BY key, bucket / %d",
+			inClause, stepFilter, factor, factor)
 	}
 
 	rows, err := db.Query(query, args...)

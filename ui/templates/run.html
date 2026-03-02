@@ -401,6 +401,11 @@ ORDER BY step LIMIT 20</textarea>
             if (c.resetZoom) c.zoomScale('x', {min, max}, 'none');
         }
         syncing = false;
+        chartSettings.xMin = String(Math.round(min));
+        chartSettings.xMax = String(Math.round(max));
+        document.getElementById('x-min').value = chartSettings.xMin;
+        document.getElementById('x-max').value = chartSettings.xMax;
+        if (_rerenderAll) _rerenderAll();
     }
 
     function resetAllZoom() {
@@ -418,6 +423,11 @@ ORDER BY step LIMIT 20</textarea>
             const btn = c.canvas.closest('.chart-container')?.querySelector('.zoom-reset-btn');
             if (btn) btn.style.display = 'none';
         }
+        chartSettings.xMin = '';
+        chartSettings.xMax = '';
+        document.getElementById('x-min').value = '';
+        document.getElementById('x-max').value = '';
+        if (_rerenderAll) _rerenderAll();
     }
 
     let expandedOverlay = null;
@@ -657,6 +667,18 @@ ORDER BY step LIMIT 20</textarea>
         const INITIAL_SIZE = 6;
         const AUTO_COLLAPSE_THRESHOLD = 50;
         const MAX_CHART_POINTS = 1000;
+        let prevXRange = '';
+
+        function historyURL(keysParam) {
+            let url = `/api/runs/${runID}/history?maxPoints=${MAX_CHART_POINTS}&keys=${keysParam}`;
+            if (chartSettings.xMin !== '') url += `&xMin=${encodeURIComponent(chartSettings.xMin)}`;
+            if (chartSettings.xMax !== '') url += `&xMax=${encodeURIComponent(chartSettings.xMax)}`;
+            return url;
+        }
+
+        function currentXRange() {
+            return chartSettings.xMin + ',' + chartSettings.xMax;
+        }
 
         function destroyAll() {
             for (const key of Object.keys(allCharts)) {
@@ -681,22 +703,27 @@ ORDER BY step LIMIT 20</textarea>
         const LAZY_BATCH_SIZE = 20;
         const LAZY_DEBOUNCE_MS = 50;
         let allKeyNames = null;
+        let fetchGeneration = 0;
 
         async function flushLazyQueue() {
             lazyTimer = null;
             if (lazyQueue.length === 0) return;
+            const gen = fetchGeneration;
             const batch = lazyQueue.splice(0);
             for (const key of batch) pendingKeys.add(key);
             for (let i = 0; i < batch.length; i += LAZY_BATCH_SIZE) {
+                if (gen !== fetchGeneration) return;
                 const chunk = batch.slice(i, i + LAZY_BATCH_SIZE);
                 const keysParam = chunk.map(k => encodeURIComponent(k)).join(',');
                 try {
-                    const resp = await fetch(`/api/runs/${runID}/history?maxPoints=${MAX_CHART_POINTS}&keys=${keysParam}`);
+                    const resp = await fetch(historyURL(keysParam));
+                    if (gen !== fetchGeneration) return;
                     const reader = resp.body.getReader();
                     const decoder = new TextDecoder();
                     let buffer = '';
                     while (true) {
                         const { done, value } = await reader.read();
+                        if (gen !== fetchGeneration) return;
                         if (done) break;
                         buffer += decoder.decode(value, { stream: true });
                         const lines = buffer.split('\n');
@@ -723,6 +750,7 @@ ORDER BY step LIMIT 20</textarea>
                         buildAndCacheFullData();
                     }
                 } catch (e) {
+                    if (gen !== fetchGeneration) return;
                     console.warn('worb: lazy fetch failed:', e);
                     for (const key of chunk) pendingKeys.delete(key);
                 }
@@ -1101,6 +1129,16 @@ ORDER BY step LIMIT 20</textarea>
         }
 
         _rerenderAll = function() {
+            const xr = currentXRange();
+            if (xr !== prevXRange) {
+                prevXRange = xr;
+                fetchGeneration++;
+                for (const k in metrics) metrics[k] = [];
+                loadedKeys.clear();
+                pendingKeys.clear();
+                lazyQueue = [];
+                if (lazyTimer) { clearTimeout(lazyTimer); lazyTimer = null; }
+            }
             destroyAll();
             render();
         };

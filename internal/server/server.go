@@ -202,6 +202,17 @@ func (s *Server) apiGetHistory(w http.ResponseWriter, r *http.Request) {
 	if keysParam := r.URL.Query().Get("keys"); keysParam != "" {
 		filterKeys = strings.Split(keysParam, ",")
 	}
+	var xMin, xMax *float64
+	if v := r.URL.Query().Get("xMin"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			xMin = &f
+		}
+	}
+	if v := r.URL.Query().Get("xMax"); v != "" {
+		if f, err := strconv.ParseFloat(v, 64); err == nil {
+			xMax = &f
+		}
+	}
 
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -210,7 +221,7 @@ func (s *Server) apiGetHistory(w http.ResponseWriter, r *http.Request) {
 	enc := json.NewEncoder(w)
 	n := 0
 
-	err := s.store.StreamHistoryScalars(runID, maxPoints, filterKeys, func(p store.ScalarPoint) error {
+	err := s.store.StreamHistoryScalars(runID, maxPoints, filterKeys, xMin, xMax, func(p store.ScalarPoint) error {
 		if err := enc.Encode(p); err != nil {
 			return err
 		}

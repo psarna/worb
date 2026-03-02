@@ -517,6 +517,11 @@
             if (c.resetZoom) c.zoomScale('x', {min, max}, 'none');
         }
         syncing = false;
+        chartSettings.xMin = String(Math.round(min));
+        chartSettings.xMax = String(Math.round(max));
+        document.getElementById('x-min').value = chartSettings.xMin;
+        document.getElementById('x-max').value = chartSettings.xMax;
+        if (_rerenderAll) _rerenderAll();
     }
 
     function resetAllZoom() {
@@ -534,6 +539,11 @@
             const btn = c.canvas.closest('.chart-container')?.querySelector('.zoom-reset-btn');
             if (btn) btn.style.display = 'none';
         }
+        chartSettings.xMin = '';
+        chartSettings.xMax = '';
+        document.getElementById('x-min').value = '';
+        document.getElementById('x-max').value = '';
+        if (_rerenderAll) _rerenderAll();
     }
 
     let expandedOverlay = null;
@@ -838,6 +848,18 @@
         const INITIAL_SIZE = 6;
         const AUTO_COLLAPSE_THRESHOLD = 50;
         const MAX_CHART_POINTS = 1000;
+        let prevXRange = '';
+
+        function historyURL(rid, keysParam) {
+            let url = `/api/runs/${rid}/history?maxPoints=${MAX_CHART_POINTS}&keys=${keysParam}`;
+            if (chartSettings.xMin !== '') url += `&xMin=${encodeURIComponent(chartSettings.xMin)}`;
+            if (chartSettings.xMax !== '') url += `&xMax=${encodeURIComponent(chartSettings.xMax)}`;
+            return url;
+        }
+
+        function currentXRange() {
+            return chartSettings.xMin + ',' + chartSettings.xMax;
+        }
 
         const collapsedCategories = new Set();
         const categoryElements = {};
@@ -851,6 +873,7 @@
         const LAZY_BATCH_SIZE = 20;
         const LAZY_DEBOUNCE_MS = 50;
         let allKeyNames = null;
+        let fetchGeneration = 0;
 
         function keyHasData(key) {
             const rd = metrics[key];
@@ -873,21 +896,25 @@
         async function flushLazyQueue() {
             lazyTimer = null;
             if (lazyQueue.length === 0) return;
+            const gen = fetchGeneration;
             const batch = lazyQueue.splice(0);
             for (const key of batch) pendingKeys.add(key);
             for (let i = 0; i < batch.length; i += LAZY_BATCH_SIZE) {
+                if (gen !== fetchGeneration) return;
                 const chunk = batch.slice(i, i + LAZY_BATCH_SIZE);
                 const keysParam = chunk.map(k => encodeURIComponent(k)).join(',');
                 const visibleRuns = runOrder.filter(id => !hiddenRuns.has(id));
                 try {
                     await Promise.all(visibleRuns.map(async (rid) => {
                         const name = runNames[rid] || rid.slice(0, 8);
-                        const resp = await fetch(`/api/runs/${rid}/history?maxPoints=${MAX_CHART_POINTS}&keys=${keysParam}`);
+                        const resp = await fetch(historyURL(rid, keysParam));
+                        if (gen !== fetchGeneration) return;
                         const reader = resp.body.getReader();
                         const decoder = new TextDecoder();
                         let buffer = '';
                         while (true) {
                             const { done, value } = await reader.read();
+                            if (gen !== fetchGeneration) return;
                             if (done) break;
                             buffer += decoder.decode(value, { stream: true });
                             const lines = buffer.split('\n');
@@ -908,6 +935,7 @@
                             metrics[p.k][rid].push({ step: p.s, value: p.v, min: p.min, max: p.max, runName: name });
                         }
                     }));
+                    if (gen !== fetchGeneration) return;
                     for (const key of chunk) {
                         loadedKeys.add(key);
                         pendingKeys.delete(key);
@@ -917,6 +945,7 @@
                     }
                     scheduleRender();
                 } catch (e) {
+                    if (gen !== fetchGeneration) return;
                     console.warn('worb: lazy fetch failed:', e);
                     for (const key of chunk) pendingKeys.delete(key);
                 }
@@ -1249,6 +1278,18 @@
         }
 
         _rerenderAll = function() {
+            const xr = currentXRange();
+            if (xr !== prevXRange) {
+                prevXRange = xr;
+                fetchGeneration++;
+                for (const k in metrics) {
+                    for (const rid in metrics[k]) metrics[k][rid] = [];
+                }
+                loadedKeys.clear();
+                pendingKeys.clear();
+                lazyQueue = [];
+                if (lazyTimer) { clearTimeout(lazyTimer); lazyTimer = null; }
+            }
             destroyAll();
             render();
         };
