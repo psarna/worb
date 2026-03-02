@@ -5,6 +5,17 @@ import (
 	"testing"
 )
 
+func setupTestDB(t *testing.T) *DB {
+	t.Helper()
+	dir := t.TempDir()
+	db, err := New(dir, "sqlite")
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
+}
+
 func TestPurgeDeletedRun(t *testing.T) {
 	db := setupTestDB(t)
 

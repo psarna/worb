@@ -13,11 +13,27 @@ func (db *DB) StartCleanup() {
 		ticker := time.NewTicker(1 * time.Second)
 		defer ticker.Stop()
 		for range ticker.C {
-			if _, err := db.purgeDeletedData(5000); err != nil {
+			if !db.hasDeletedData() {
+				continue
+			}
+			db.writeMu.Lock()
+			_, err := db.purgeDeletedData(5000)
+			db.writeMu.Unlock()
+			if err != nil {
 				log.Printf("cleanup error: %v", err)
 			}
 		}
 	}()
+}
+
+func (db *DB) hasDeletedData() bool {
+	var id string
+	err := db.QueryRow("SELECT id FROM runs WHERE deleted_at IS NOT NULL LIMIT 1").Scan(&id)
+	if err == nil {
+		return true
+	}
+	err = db.QueryRow("SELECT id FROM projects WHERE deleted_at IS NOT NULL LIMIT 1").Scan(&id)
+	return err == nil
 }
 
 // purgeDeletedData removes a batch of data for soft-deleted runs, then

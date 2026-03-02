@@ -63,7 +63,7 @@ func (db *DB) EnsureProject(entity, name string) (*Project, error) {
 		Entity: entity,
 		Name:   name,
 	}
-	_, err = db.Exec("INSERT INTO projects (id, entity, name) VALUES (?, ?, ?)", p.ID, p.Entity, p.Name)
+	_, err = db.WriteExec("INSERT INTO projects (id, entity, name) VALUES (?, ?, ?)", p.ID, p.Entity, p.Name)
 	if err != nil {
 		return nil, fmt.Errorf("insert project: %w", err)
 	}
@@ -131,7 +131,7 @@ func (db *DB) UpsertRun(p UpsertRunParams) (*Run, error) {
 		if p.State == "" {
 			p.State = "running"
 		}
-		_, err = db.Exec(`INSERT INTO runs (id, project_id, name, display_name, config, summary, state, host, program, git_commit, tags, notes, group_name, job_type, sweep_name)
+		_, err = db.WriteExec(`INSERT INTO runs (id, project_id, name, display_name, config, summary, state, host, program, git_commit, tags, notes, group_name, job_type, sweep_name)
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			p.ID, proj.ID, p.Name, p.DisplayName, string(p.Config), string(p.Summary), p.State,
 			p.Host, p.Program, p.GitCommit, string(p.Tags), p.Notes, p.GroupName, p.JobType, p.SweepName)
@@ -174,7 +174,7 @@ func (db *DB) UpsertRun(p UpsertRunParams) (*Run, error) {
 			args = append(args, p.Program)
 		}
 		args = append(args, p.ID)
-		_, err = db.Exec("UPDATE runs SET "+sets+" WHERE id = ?", args...)
+		_, err = db.WriteExec("UPDATE runs SET "+sets+" WHERE id = ?", args...)
 		if err != nil {
 			return nil, fmt.Errorf("update run: %w", err)
 		}
@@ -186,7 +186,7 @@ func (db *DB) UpsertRun(p UpsertRunParams) (*Run, error) {
 }
 
 func (db *DB) FinishRun(id string) error {
-	_, err := db.Exec("UPDATE runs SET state = 'finished', updated_at = current_timestamp WHERE id = ?", id)
+	_, err := db.WriteExec("UPDATE runs SET state = 'finished', updated_at = current_timestamp WHERE id = ?", id)
 	return err
 }
 
@@ -263,7 +263,7 @@ func (db *DB) ListRuns(projectID string) ([]*Run, error) {
 }
 
 func (db *DB) DeleteRun(runID string) error {
-	res, err := db.Exec("UPDATE runs SET deleted_at = current_timestamp WHERE id = ? AND deleted_at IS NULL", runID)
+	res, err := db.WriteExec("UPDATE runs SET deleted_at = current_timestamp WHERE id = ? AND deleted_at IS NULL", runID)
 	if err != nil {
 		return err
 	}
@@ -275,6 +275,8 @@ func (db *DB) DeleteRun(runID string) error {
 }
 
 func (db *DB) DeleteProject(projectID string) error {
+	db.writeMu.Lock()
+	defer db.writeMu.Unlock()
 	tx, err := db.Begin()
 	if err != nil {
 		return err

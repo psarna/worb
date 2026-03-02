@@ -17,17 +17,48 @@ type pendingHistory struct {
 	lineCount  int
 }
 
+type pendingEvent struct {
+	lineNum int
+	data    string
+}
+
+type pendingLog struct {
+	lineNum int
+	line    string
+}
+
+type pendingData struct {
+	history *pendingHistory
+	events  []pendingEvent
+	logs    []pendingLog
+}
+
 type writeBuffer struct {
-	mu      sync.Mutex
-	db      *DB
-	history map[string]*pendingHistory
-	timer   *time.Timer
+	mu    sync.Mutex
+	db    *DB
+	runs  map[string]*pendingData
+	timer *time.Timer
 }
 
 func newWriteBuffer(db *DB) *writeBuffer {
 	return &writeBuffer{
-		db:      db,
-		history: make(map[string]*pendingHistory),
+		db:   db,
+		runs: make(map[string]*pendingData),
+	}
+}
+
+func (b *writeBuffer) pending(runID string) *pendingData {
+	p := b.runs[runID]
+	if p == nil {
+		p = &pendingData{}
+		b.runs[runID] = p
+	}
+	return p
+}
+
+func (b *writeBuffer) ensureTimer() {
+	if b.timer == nil {
+		b.timer = time.AfterFunc(bufferFlushInterval, b.flushAsync)
 	}
 }
 
@@ -40,18 +71,45 @@ func (b *writeBuffer) Add(runID string, rows []struct {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	p := b.history[runID]
-	if p == nil {
-		p = &pendingHistory{}
-		b.history[runID] = p
+	p := b.pending(runID)
+	if p.history == nil {
+		p.history = &pendingHistory{}
 	}
-	p.scalars = append(p.scalars, scalars...)
-	p.histograms = append(p.histograms, histograms...)
-	p.lineCount += len(rows)
+	p.history.scalars = append(p.history.scalars, scalars...)
+	p.history.histograms = append(p.history.histograms, histograms...)
+	p.history.lineCount += len(rows)
 
-	if b.timer == nil {
-		b.timer = time.AfterFunc(bufferFlushInterval, b.flushAsync)
+	b.ensureTimer()
+}
+
+func (b *writeBuffer) AddEvents(runID string, rows []struct {
+	LineNum int
+	Data    json.RawMessage
+}) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	p := b.pending(runID)
+	for _, r := range rows {
+		p.events = append(p.events, pendingEvent{lineNum: r.LineNum, data: string(r.Data)})
 	}
+
+	b.ensureTimer()
+}
+
+func (b *writeBuffer) AddLogs(runID string, rows []struct {
+	LineNum int
+	Line    string
+}) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	p := b.pending(runID)
+	for _, r := range rows {
+		p.logs = append(p.logs, pendingLog{lineNum: r.LineNum, line: r.Line})
+	}
+
+	b.ensureTimer()
 }
 
 func (b *writeBuffer) flushAsync() {
@@ -60,16 +118,19 @@ func (b *writeBuffer) flushAsync() {
 		b.timer.Stop()
 		b.timer = nil
 	}
-	toFlush := b.history
-	b.history = make(map[string]*pendingHistory)
+	toFlush := b.runs
+	b.runs = make(map[string]*pendingData)
 	b.mu.Unlock()
 
 	b.flush(toFlush)
 }
 
-func (b *writeBuffer) flush(batches map[string]*pendingHistory) {
+func (b *writeBuffer) flush(batches map[string]*pendingData) {
 	for runID, p := range batches {
-		if err := b.db.insertParsedHistory(runID, p); err != nil {
+		b.db.writeMu.Lock()
+		err := b.db.flushRunData(runID, p)
+		b.db.writeMu.Unlock()
+		if err != nil {
 			log.Printf("buffer flush %s: %v", runID, err)
 		}
 	}
@@ -81,8 +142,8 @@ func (b *writeBuffer) Close() {
 		b.timer.Stop()
 		b.timer = nil
 	}
-	toFlush := b.history
-	b.history = make(map[string]*pendingHistory)
+	toFlush := b.runs
+	b.runs = make(map[string]*pendingData)
 	b.mu.Unlock()
 
 	b.flush(toFlush)

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	_ "github.com/tursodatabase/libsql-client-go/libsql"
@@ -48,8 +49,17 @@ func (ft flexTime) Value() (driver.Value, error) {
 
 type DB struct {
 	*sql.DB
-	Engine string
-	buf    *writeBuffer
+	Engine  string
+	buf     *writeBuffer
+	writeMu sync.Mutex
+}
+
+// WriteExec serializes a write operation through writeMu to avoid SQLITE_BUSY
+// contention with the background write buffer flush.
+func (db *DB) WriteExec(query string, args ...interface{}) (sql.Result, error) {
+	db.writeMu.Lock()
+	defer db.writeMu.Unlock()
+	return db.Exec(query, args...)
 }
 
 func (db *DB) castJSON(col string) string {
