@@ -115,11 +115,17 @@ func (s *Server) setupRoutes() {
 
 	r.Handle("/static/*", http.FileServer(http.FS(ui.Static)))
 	r.Get("/", s.uiIndex)
+	r.Get("/projects", http.RedirectHandler("/", http.StatusTemporaryRedirect).ServeHTTP)
+	r.Get("/projects/", http.RedirectHandler("/", http.StatusTemporaryRedirect).ServeHTTP)
 	r.Get("/projects/{projectID}", s.uiProject)
 	r.Get("/runs/{runID}", s.uiRun)
 
 	r.Get("/{entity}/{project}", s.wandbProjectRedirect)
 	r.Get("/{entity}/{project}/runs/{runName}", s.wandbRunRedirect)
+
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/?notfound="+r.URL.Path, http.StatusTemporaryRedirect)
+	})
 
 	s.router = r
 }

@@ -16,18 +16,22 @@ func init() {
 
 func (s *Server) uiIndex(w http.ResponseWriter, r *http.Request) {
 	projects, _ := s.store.ListAllProjects()
-	templates.ExecuteTemplate(w, "index.html", map[string]any{
+	data := map[string]any{
 		"Projects": projects,
 		"Host":     s.config.Host,
 		"Port":     s.config.Port,
-	})
+	}
+	if notFound := r.URL.Query().Get("notfound"); notFound != "" {
+		data["NotFound"] = notFound
+	}
+	templates.ExecuteTemplate(w, "index.html", data)
 }
 
 func (s *Server) uiProject(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectID")
 	project, err := s.store.GetProject(projectID)
 	if err != nil {
-		http.Error(w, "project not found", http.StatusNotFound)
+		http.Redirect(w, r, "/?notfound="+r.URL.Path, http.StatusTemporaryRedirect)
 		return
 	}
 	runs, _ := s.store.ListRuns(projectID)
@@ -41,7 +45,7 @@ func (s *Server) uiRun(w http.ResponseWriter, r *http.Request) {
 	runID := chi.URLParam(r, "runID")
 	run, err := s.store.GetRun(runID)
 	if err != nil {
-		http.Error(w, "run not found", http.StatusNotFound)
+		http.Redirect(w, r, "/?notfound="+r.URL.Path, http.StatusTemporaryRedirect)
 		return
 	}
 	project, _ := s.store.GetProject(run.ProjectID)
