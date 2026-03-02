@@ -227,6 +227,7 @@
             for (let di = 0; di < chart.data.datasets.length; di++) {
                 if (!chart.isDatasetVisible(di)) continue;
                 const ds = chart.data.datasets[di];
+                if (ds._isBand) continue;
                 const closest = findClosest(ds.data, xVal);
                 if (!closest) continue;
                 const yPx = chart.scales.y.getPixelForValue(closest.y);
@@ -266,6 +267,7 @@
         for (let di = 0; di < chart.data.datasets.length; di++) {
             if (!chart.isDatasetVisible(di)) continue;
             const ds = chart.data.datasets[di];
+            if (ds._isBand) continue;
             const closest = findClosest(ds.data, xVal);
             if (!closest) continue;
             const color = ds.borderColor || '#58a6ff';
@@ -426,7 +428,7 @@
                 responsive: true,
                 parsing: false,
                 plugins: {
-                    legend: { display: true, position: 'top', labels: { color: '#8b949e', boxWidth: 12, padding: 12, font: { size: 11 } } },
+                    legend: { display: true, position: 'top', labels: { color: '#8b949e', boxWidth: 12, padding: 12, font: { size: 11 }, filter: (item, data) => !data.datasets[item.datasetIndex]._isBand } },
                     zoom: {
                         zoom: {
                             drag: {
@@ -505,21 +507,35 @@
         const resetBtn = div.querySelector('.zoom-reset-btn');
         const multiRun = runOrder.length > 1;
 
-        const datasets = runOrder.map((runID, idx) => {
+        const datasets = [];
+        runOrder.forEach((runID, idx) => {
             const points = runDatasets[runID] || [];
             const color = runColors[runID] || RUN_COLORS[idx % RUN_COLORS.length];
-            return {
-                runID,
-                label: points[0]?.runName || runID.slice(0, 8),
+            const hasBands = points.length > 0 && points[0].min != null;
+            const hidden = hiddenRuns.has(runID);
+            const label = points[0]?.runName || runID.slice(0, 8);
+            if (hasBands) {
+                datasets.push({
+                    label: '', data: points.map(p => ({ x: p.step, y: p.min })),
+                    borderWidth: 0, pointRadius: 0, fill: false,
+                    _isBand: true, runID, hidden,
+                });
+                datasets.push({
+                    label: '', data: points.map(p => ({ x: p.step, y: p.max })),
+                    borderWidth: 0, pointRadius: 0,
+                    backgroundColor: color + '20', fill: '-1',
+                    _isBand: true, runID, hidden,
+                });
+            }
+            datasets.push({
+                runID, label,
                 data: points.map(p => ({ x: p.step, y: p.value })),
                 borderColor: color,
-                backgroundColor: multiRun ? 'transparent' : color + '1a',
-                borderWidth: 1.5,
-                pointRadius: 0,
-                tension: 0.1,
-                fill: !multiRun,
-                hidden: hiddenRuns.has(runID),
-            };
+                backgroundColor: (!hasBands && !multiRun) ? color + '1a' : 'transparent',
+                borderWidth: 1.5, pointRadius: 0, tension: 0.1,
+                fill: (!hasBands && !multiRun),
+                hidden,
+            });
         });
 
         const allSteps = new Set();
@@ -836,22 +852,37 @@
                     if (allCharts[key]) {
                         const chart = allCharts[key];
                         const allSteps = new Set();
-                        const dsArr = runOrder.filter(rid => runDatasets[rid]?.length).map((runID, idx) => {
+                        const multiRun = runOrder.length > 1;
+                        const dsArr = [];
+                        runOrder.filter(rid => runDatasets[rid]?.length).forEach((runID, idx) => {
                             const points = runDatasets[runID];
-                            const data = points.map(p => ({ x: p.step, y: p.value }));
-                            for (const p of data) allSteps.add(p.x);
-                            return {
-                                runID,
-                                label: runNames[runID] || runID.slice(0, 8),
-                                data,
-                                borderColor: runColors[runID],
-                                backgroundColor: runOrder.length > 1 ? 'transparent' : runColors[runID] + '1a',
-                                borderWidth: 1.5,
-                                pointRadius: 0,
-                                tension: 0.1,
-                                fill: runOrder.length <= 1,
-                                hidden: hiddenRuns.has(runID),
-                            };
+                            const color = runColors[runID];
+                            const hasBands = points.length > 0 && points[0].min != null;
+                            const hidden = hiddenRuns.has(runID);
+                            const label = runNames[runID] || runID.slice(0, 8);
+                            for (const p of points) allSteps.add(p.step);
+                            if (hasBands) {
+                                dsArr.push({
+                                    label: '', data: points.map(p => ({ x: p.step, y: p.min })),
+                                    borderWidth: 0, pointRadius: 0, fill: false,
+                                    _isBand: true, runID, hidden,
+                                });
+                                dsArr.push({
+                                    label: '', data: points.map(p => ({ x: p.step, y: p.max })),
+                                    borderWidth: 0, pointRadius: 0,
+                                    backgroundColor: color + '20', fill: '-1',
+                                    _isBand: true, runID, hidden,
+                                });
+                            }
+                            dsArr.push({
+                                runID, label,
+                                data: points.map(p => ({ x: p.step, y: p.value })),
+                                borderColor: color,
+                                backgroundColor: (!hasBands && !multiRun) ? color + '1a' : 'transparent',
+                                borderWidth: 1.5, pointRadius: 0, tension: 0.1,
+                                fill: (!hasBands && !multiRun),
+                                hidden,
+                            });
                         });
                         chart.data.labels = [...allSteps].sort((a, b) => a - b);
                         chart.data.datasets = dsArr;
@@ -910,7 +941,7 @@
                 const p = JSON.parse(line);
                 if (!metrics[p.k]) metrics[p.k] = {};
                 if (!metrics[p.k][runID]) metrics[p.k][runID] = [];
-                metrics[p.k][runID].push({ step: p.s, value: p.v, runName: name });
+                metrics[p.k][runID].push({ step: p.s, value: p.v, min: p.min, max: p.max, runName: name });
             }
         }
 
@@ -945,7 +976,7 @@
                     const p = JSON.parse(line);
                     if (!metrics[p.k]) metrics[p.k] = {};
                     if (!metrics[p.k][runID]) metrics[p.k][runID] = [];
-                    metrics[p.k][runID].push({ step: p.s, value: p.v, runName: name });
+                    metrics[p.k][runID].push({ step: p.s, value: p.v, min: p.min, max: p.max, runName: name });
                 }
                 scheduleRender();
             }
@@ -954,7 +985,7 @@
                 const p = JSON.parse(buffer);
                 if (!metrics[p.k]) metrics[p.k] = {};
                 if (!metrics[p.k][runID]) metrics[p.k][runID] = [];
-                metrics[p.k][runID].push({ step: p.s, value: p.v, runName: name });
+                metrics[p.k][runID].push({ step: p.s, value: p.v, min: p.min, max: p.max, runName: name });
                 scheduleRender();
             }
             await setCachedHistory(runID, expectedLines, fullText);

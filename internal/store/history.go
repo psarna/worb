@@ -74,22 +74,25 @@ func (db *DB) GetHistory(runID string) ([]HistoryRow, error) {
 }
 
 type ScalarPoint struct {
-	Key   string  `json:"k"`
-	Step  float64 `json:"s"`
-	Value float64 `json:"v"`
-	Index int     `json:"i"`
+	Key   string   `json:"k"`
+	Step  float64  `json:"s"`
+	Value float64  `json:"v"`
+	Min   *float64 `json:"min,omitempty"`
+	Max   *float64 `json:"max,omitempty"`
+	Index int      `json:"i"`
 }
 
 func (db *DB) StreamHistoryScalars(runID string, maxPoints int, emit func(ScalarPoint) error) error {
-	// Determine sampling interval
-	every := 1
+	var totalRows int
+	needsBucket := false
+	bucketSize := 1
 	if maxPoints > 0 {
-		var totalRows int
 		if err := db.QueryRow("SELECT COUNT(*) FROM history WHERE run_id = ?", runID).Scan(&totalRows); err != nil {
 			return err
 		}
 		if totalRows > maxPoints {
-			every = totalRows / maxPoints
+			needsBucket = true
+			bucketSize = totalRows / maxPoints
 		}
 	}
 
@@ -99,35 +102,107 @@ func (db *DB) StreamHistoryScalars(runID string, maxPoints int, emit func(Scalar
 	}
 	defer rows.Close()
 
+	if !needsBucket {
+		// Stream raw points without aggregation
+		for rows.Next() {
+			var step int
+			var data string
+			if err := rows.Scan(&step, &data); err != nil {
+				return err
+			}
+			if err := emitHistoryRow(step, data, emit); err != nil {
+				return err
+			}
+		}
+		return rows.Err()
+	}
+
+	// Bucket aggregation
+	accum := map[string]*metricAccum{}
+	bucketStepSum := 0.0
+	bucketStepCount := 0
 	rowIdx := 0
-	var lastStep int
-	var lastData string
-	hasLast := false
+
+	flushBucket := func() error {
+		if bucketStepCount == 0 {
+			return nil
+		}
+		midStep := bucketStepSum / float64(bucketStepCount)
+		for key, a := range accum {
+			avg := a.sum / float64(a.count)
+			mn := a.min
+			mx := a.max
+			if err := emit(ScalarPoint{Key: key, Step: midStep, Value: avg, Min: &mn, Max: &mx, Index: int(midStep)}); err != nil {
+				return err
+			}
+		}
+		// Reset
+		for k := range accum {
+			delete(accum, k)
+		}
+		bucketStepSum = 0
+		bucketStepCount = 0
+		return nil
+	}
+
 	for rows.Next() {
 		var step int
 		var data string
 		if err := rows.Scan(&step, &data); err != nil {
 			return err
 		}
-		rowIdx++
 
-		if every > 1 && rowIdx != 1 && rowIdx%every != 0 {
-			lastStep = step
-			lastData = data
-			hasLast = true
+		// Flush bucket when full
+		if rowIdx > 0 && rowIdx%bucketSize == 0 {
+			if err := flushBucket(); err != nil {
+				return err
+			}
+		}
+
+		var obj map[string]json.RawMessage
+		if json.Unmarshal([]byte(data), &obj) != nil {
+			rowIdx++
 			continue
 		}
-		hasLast = false
 
-		if err := emitHistoryRow(step, data, emit); err != nil {
-			return err
+		xVal := float64(step)
+		if raw, ok := obj["_step"]; ok {
+			var v float64
+			if json.Unmarshal(raw, &v) == nil {
+				xVal = v
+			}
 		}
+
+		bucketStepSum += xVal
+		bucketStepCount++
+
+		for key, raw := range obj {
+			if len(key) > 0 && key[0] == '_' || key == "step" {
+				continue
+			}
+			var v float64
+			if json.Unmarshal(raw, &v) != nil {
+				continue
+			}
+			a, ok := accum[key]
+			if !ok {
+				accum[key] = &metricAccum{sum: v, min: v, max: v, count: 1}
+			} else {
+				a.sum += v
+				a.count++
+				if v < a.min {
+					a.min = v
+				}
+				if v > a.max {
+					a.max = v
+				}
+			}
+		}
+		rowIdx++
 	}
-	// Always emit the last row for good chart boundaries
-	if hasLast {
-		if err := emitHistoryRow(lastStep, lastData, emit); err != nil {
-			return err
-		}
+	// Flush final bucket
+	if err := flushBucket(); err != nil {
+		return err
 	}
 	return rows.Err()
 }
@@ -162,17 +237,26 @@ func emitHistoryRow(step int, data string, emit func(ScalarPoint) error) error {
 }
 
 type ProjectScalarPoint struct {
-	RunID   string  `json:"r"`
-	RunName string  `json:"n"`
-	Key     string  `json:"k"`
-	Step    float64 `json:"s"`
-	Value   float64 `json:"v"`
-	Index   int     `json:"i"`
+	RunID   string   `json:"r"`
+	RunName string   `json:"n"`
+	Key     string   `json:"k"`
+	Step    float64  `json:"s"`
+	Value   float64  `json:"v"`
+	Min     *float64 `json:"min,omitempty"`
+	Max     *float64 `json:"max,omitempty"`
+	Index   int      `json:"i"`
+}
+
+type metricAccum struct {
+	sum   float64
+	min   float64
+	max   float64
+	count int
 }
 
 func (db *DB) StreamProjectHistoryScalars(projectID string, maxPoints int, emit func(ProjectScalarPoint) error) error {
-	// Determine per-run sampling interval
-	every := 1
+	needsBucket := false
+	bucketSize := 1
 	if maxPoints > 0 {
 		var maxRunRows int
 		err := db.QueryRow(`SELECT COALESCE(MAX(cnt), 0) FROM (
@@ -185,7 +269,8 @@ func (db *DB) StreamProjectHistoryScalars(projectID string, maxPoints int, emit 
 			return err
 		}
 		if maxRunRows > maxPoints {
-			every = maxRunRows / maxPoints
+			needsBucket = true
+			bucketSize = maxRunRows / maxPoints
 		}
 	}
 
@@ -200,9 +285,52 @@ func (db *DB) StreamProjectHistoryScalars(projectID string, maxPoints int, emit 
 	}
 	defer rows.Close()
 
-	// Track row index per run for sampling
-	runRowIdx := map[string]int{}
-	runLastRow := map[string][4]string{} // runID, runName, step, data
+	if !needsBucket {
+		for rows.Next() {
+			var runID, runName string
+			var step int
+			var data string
+			if err := rows.Scan(&runID, &runName, &step, &data); err != nil {
+				return err
+			}
+			if err := emitProjectHistoryRow(runID, runName, step, data, emit); err != nil {
+				return err
+			}
+		}
+		return rows.Err()
+	}
+
+	// Per-run bucket aggregation
+	type runBucket struct {
+		runName       string
+		accum         map[string]*metricAccum
+		stepSum       float64
+		stepCount     int
+		rowIdx        int
+	}
+	runBuckets := map[string]*runBucket{}
+
+	flushRunBucket := func(runID string, rb *runBucket) error {
+		if rb.stepCount == 0 {
+			return nil
+		}
+		midStep := rb.stepSum / float64(rb.stepCount)
+		for key, a := range rb.accum {
+			avg := a.sum / float64(a.count)
+			mn := a.min
+			mx := a.max
+			if err := emit(ProjectScalarPoint{
+				RunID: runID, RunName: rb.runName,
+				Key: key, Step: midStep, Value: avg, Min: &mn, Max: &mx, Index: int(midStep),
+			}); err != nil {
+				return err
+			}
+		}
+		rb.accum = map[string]*metricAccum{}
+		rb.stepSum = 0
+		rb.stepCount = 0
+		return nil
+	}
 
 	for rows.Next() {
 		var runID, runName string
@@ -212,24 +340,63 @@ func (db *DB) StreamProjectHistoryScalars(projectID string, maxPoints int, emit 
 			return err
 		}
 
-		runRowIdx[runID]++
-		idx := runRowIdx[runID]
+		rb, ok := runBuckets[runID]
+		if !ok {
+			rb = &runBucket{runName: runName, accum: map[string]*metricAccum{}}
+			runBuckets[runID] = rb
+		}
 
-		if every > 1 && idx != 1 && idx%every != 0 {
-			runLastRow[runID] = [4]string{runID, runName, fmt.Sprintf("%d", step), data}
+		// Flush bucket when full
+		if rb.rowIdx > 0 && rb.rowIdx%bucketSize == 0 {
+			if err := flushRunBucket(runID, rb); err != nil {
+				return err
+			}
+		}
+
+		var obj map[string]json.RawMessage
+		if json.Unmarshal([]byte(data), &obj) != nil {
+			rb.rowIdx++
 			continue
 		}
-		delete(runLastRow, runID)
 
-		if err := emitProjectHistoryRow(runID, runName, step, data, emit); err != nil {
-			return err
+		xVal := float64(step)
+		if raw, ok := obj["_step"]; ok {
+			var v float64
+			if json.Unmarshal(raw, &v) == nil {
+				xVal = v
+			}
 		}
+
+		rb.stepSum += xVal
+		rb.stepCount++
+
+		for key, raw := range obj {
+			if len(key) > 0 && key[0] == '_' || key == "step" {
+				continue
+			}
+			var v float64
+			if json.Unmarshal(raw, &v) != nil {
+				continue
+			}
+			a, exists := rb.accum[key]
+			if !exists {
+				rb.accum[key] = &metricAccum{sum: v, min: v, max: v, count: 1}
+			} else {
+				a.sum += v
+				a.count++
+				if v < a.min {
+					a.min = v
+				}
+				if v > a.max {
+					a.max = v
+				}
+			}
+		}
+		rb.rowIdx++
 	}
-	// Emit last row of each run
-	for _, last := range runLastRow {
-		var step int
-		fmt.Sscanf(last[2], "%d", &step)
-		if err := emitProjectHistoryRow(last[0], last[1], step, last[3], emit); err != nil {
+	// Flush final buckets for all runs
+	for runID, rb := range runBuckets {
+		if err := flushRunBucket(runID, rb); err != nil {
 			return err
 		}
 	}

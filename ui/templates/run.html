@@ -171,6 +171,7 @@ ORDER BY step LIMIT 20</textarea>
             for (let di = 0; di < chart.data.datasets.length; di++) {
                 if (!chart.isDatasetVisible(di)) continue;
                 const ds = chart.data.datasets[di];
+                if (ds._isBand) continue;
                 const closest = findClosest(ds.data, xVal);
                 if (!closest) continue;
                 const yPx = chart.scales.y.getPixelForValue(closest.y);
@@ -210,6 +211,7 @@ ORDER BY step LIMIT 20</textarea>
         for (let di = 0; di < chart.data.datasets.length; di++) {
             if (!chart.isDatasetVisible(di)) continue;
             const ds = chart.data.datasets[di];
+            if (ds._isBand) continue;
             const closest = findClosest(ds.data, xVal);
             if (!closest) continue;
             const color = ds.borderColor || '#58a6ff';
@@ -439,20 +441,49 @@ ORDER BY step LIMIT 20</textarea>
                 },
                 animation: false,
             }
-        } : {
-            type: 'line',
-            data: {
-                datasets: [{
+        } : (() => {
+            const hasBands = points.length > 0 && points[0].min != null;
+            const datasets = hasBands ? [
+                {
+                    label: '_min',
+                    data: points.map(p => ({ x: p.step, y: p.min })),
+                    borderWidth: 0,
+                    pointRadius: 0,
+                    fill: false,
+                    _isBand: true,
+                },
+                {
+                    label: '_max',
+                    data: points.map(p => ({ x: p.step, y: p.max })),
+                    borderWidth: 0,
+                    pointRadius: 0,
+                    backgroundColor: 'rgba(88,166,255,0.15)',
+                    fill: '-1',
+                    _isBand: true,
+                },
+                {
                     label: key,
                     data: points.map(p => ({ x: p.step, y: p.value })),
                     borderColor: '#58a6ff',
-                    backgroundColor: 'rgba(88,166,255,0.1)',
+                    backgroundColor: 'transparent',
                     borderWidth: 1.5,
-                    pointRadius: points.length < 3 ? 3 : 0,
+                    pointRadius: 0,
                     tension: 0.1,
-                    fill: true,
-                }]
-            },
+                    fill: false,
+                },
+            ] : [{
+                label: key,
+                data: points.map(p => ({ x: p.step, y: p.value })),
+                borderColor: '#58a6ff',
+                backgroundColor: 'rgba(88,166,255,0.1)',
+                borderWidth: 1.5,
+                pointRadius: points.length < 3 ? 3 : 0,
+                tension: 0.1,
+                fill: true,
+            }];
+            return {
+            type: 'line',
+            data: { datasets },
             options: {
                 responsive: true,
                 parsing: false,
@@ -484,7 +515,7 @@ ORDER BY step LIMIT 20</textarea>
                 },
                 animation: false,
             }
-        };
+        }; })();
 
         const chart = new Chart(div.querySelector('canvas'), chartConfig);
         everyChart.add(chart);
@@ -630,9 +661,8 @@ ORDER BY step LIMIT 20</textarea>
                 return sorted.map((p, i) => ({ step: i, value: p.value }));
             }
             const byStep = new Map();
-            for (const p of points) byStep.set(p.step, p.value);
-            return Array.from(byStep, ([step, value]) => ({ step, value }))
-                .sort((a, b) => a.step - b.step);
+            for (const p of points) byStep.set(p.step, p);
+            return Array.from(byStep.values()).sort((a, b) => a.step - b.step);
         }
 
         const PAGE_SIZE = 12;
@@ -846,28 +876,35 @@ ORDER BY step LIMIT 20</textarea>
                 for (const key of pageKeys) {
                     const points = dedupeSorted(metrics[key]);
                     const needsBar = points.length === 1;
+                    const hasBands = points.length > 0 && points[0].min != null;
                     if (allCharts[key]) {
-                        const isBar = allCharts[key].config.type === 'bar';
-                        if (isBar !== needsBar) {
-                            const oldDiv = allCharts[key].canvas.closest('.chart-container');
-                            everyChart.delete(allCharts[key]);
-                            allCharts[key].destroy();
+                        const chart = allCharts[key];
+                        const isBar = chart.config.type === 'bar';
+                        const hadBands = chart.data.datasets.some(ds => ds._isBand);
+                        if (isBar !== needsBar || hadBands !== hasBands) {
+                            const oldDiv = chart.canvas.closest('.chart-container');
+                            everyChart.delete(chart);
+                            chart.destroy();
                             if (oldDiv) oldDiv.remove();
                             allCharts[key] = createChart(catEl.charts, key, points);
                         } else {
                             if (needsBar) {
-                                allCharts[key].data.labels = [key.split('/').pop().split('-').pop()];
-                                allCharts[key].data.datasets[0].data = points.map(p => p.value);
+                                chart.data.labels = [key.split('/').pop().split('-').pop()];
+                                chart.data.datasets[0].data = points.map(p => p.value);
+                            } else if (hasBands) {
+                                chart.data.datasets[0].data = points.map(p => ({ x: p.step, y: p.min }));
+                                chart.data.datasets[1].data = points.map(p => ({ x: p.step, y: p.max }));
+                                chart.data.datasets[2].data = points.map(p => ({ x: p.step, y: p.value }));
                             } else {
-                                allCharts[key].data.datasets[0].data = points.map(p => ({ x: p.step, y: p.value }));
-                                const xScale = allCharts[key].options.scales.x;
-                                if (loadingHistory && runHistoryLineCount > 0) {
-                                    xScale.suggestedMax = runHistoryLineCount;
-                                } else {
-                                    delete xScale.suggestedMax;
-                                }
+                                chart.data.datasets[0].data = points.map(p => ({ x: p.step, y: p.value }));
                             }
-                            allCharts[key].update('none');
+                            const xScale = chart.options.scales.x;
+                            if (loadingHistory && runHistoryLineCount > 0) {
+                                xScale.suggestedMax = runHistoryLineCount;
+                            } else {
+                                delete xScale.suggestedMax;
+                            }
+                            chart.update('none');
                         }
                     } else {
                         allCharts[key] = createChart(catEl.charts, key, points);
@@ -931,7 +968,7 @@ ORDER BY step LIMIT 20</textarea>
                 if (!line) continue;
                 const p = JSON.parse(line);
                 if (!metrics[p.k]) metrics[p.k] = [];
-                metrics[p.k].push({ step: p.s, value: p.v, index: p.i });
+                metrics[p.k].push({ step: p.s, value: p.v, min: p.min, max: p.max, index: p.i });
             }
         }
 
@@ -968,7 +1005,7 @@ ORDER BY step LIMIT 20</textarea>
                 if (!line) continue;
                 const p = JSON.parse(line);
                 if (!metrics[p.k]) metrics[p.k] = [];
-                metrics[p.k].push({ step: p.s, value: p.v, index: p.i });
+                metrics[p.k].push({ step: p.s, value: p.v, min: p.min, max: p.max, index: p.i });
             }
             scheduleRender();
         }
@@ -976,7 +1013,7 @@ ORDER BY step LIMIT 20</textarea>
             fullText += '\n';
             const p = JSON.parse(buffer);
             if (!metrics[p.k]) metrics[p.k] = [];
-            metrics[p.k].push({ step: p.s, value: p.v, index: p.i });
+            metrics[p.k].push({ step: p.s, value: p.v, min: p.min, max: p.max, index: p.i });
             scheduleRender();
         }
         await setCachedHistory(runID, runHistoryLineCount, fullText);
