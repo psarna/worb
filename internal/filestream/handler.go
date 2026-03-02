@@ -78,6 +78,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					Data json.RawMessage
 				}{Step: file.Offset + i, Data: json.RawMessage(line)})
 			}
+			if len(batch) > 0 {
+				log.Printf("[filestream] history batch: offset=%d lines=%d steps=%d..%d", file.Offset, len(batch), batch[0].Step, batch[len(batch)-1].Step)
+			}
 			if err := h.Store.InsertHistoryBatch(run.ID, batch); err != nil {
 				log.Printf("insert history batch: %v", err)
 			}

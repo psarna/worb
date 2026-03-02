@@ -41,7 +41,7 @@ func TestPurgeDeletedRun(t *testing.T) {
 		}{Step: i, Data: data}
 	}
 	db.InsertHistoryBatch(run.ID, batch)
-	db.buf.flushAsync()
+	db.Flush()
 
 	// Verify data is there
 	var scalarCount int
@@ -117,7 +117,7 @@ func TestPurgeDeletedProject(t *testing.T) {
 		}
 		db.InsertHistoryBatch(run.ID, batch)
 	}
-	db.buf.flushAsync()
+	db.Flush()
 
 	// Delete the project (soft-deletes project + all runs)
 	if err := db.DeleteProject(proj.ID); err != nil {
@@ -182,7 +182,7 @@ func TestPurgeBatchSizeRespected(t *testing.T) {
 		}{Step: i, Data: data}
 	}
 	db.InsertHistoryBatch(run.ID, batch)
-	db.buf.flushAsync()
+	db.Flush()
 
 	// Soft-delete
 	db.DeleteRun(run.ID)

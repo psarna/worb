@@ -20,7 +20,14 @@ func (db *DB) InsertHistoryBatch(runID string, rows []struct {
 	if len(rows) == 0 {
 		return nil
 	}
-	db.buf.Add(runID, rows)
+	scalars, histograms := parseHistoryRows(rows)
+	for _, s := range scalars {
+		db.scalars <- scalarItem{runID: runID, parsedScalar: s}
+	}
+	for _, h := range histograms {
+		db.histograms <- histogramItem{runID: runID, parsedHistogram: h}
+	}
+	db.counters <- counterDelta{runID: runID, column: "history_line_count", delta: len(rows)}
 	return nil
 }
 
@@ -86,93 +93,6 @@ func parseHistoryRows(rows []struct {
 
 const multiRowSize = 100
 
-const txChunkSize = 1000
-
-func (db *DB) flushRunData(runID string, d *pendingData) error {
-	h := d.history
-	hasHistory := h != nil && (len(h.scalars) > 0 || len(h.histograms) > 0)
-	if !hasHistory && len(d.events) == 0 && len(d.logs) == 0 {
-		return nil
-	}
-
-	if hasHistory {
-		for i := 0; i < len(h.scalars); i += txChunkSize {
-			end := i + txChunkSize
-			if end > len(h.scalars) {
-				end = len(h.scalars)
-			}
-			db.writeMu.Lock()
-			err := db.flushScalars(runID, h.scalars[i:end])
-			db.writeMu.Unlock()
-			if err != nil {
-				return err
-			}
-		}
-		for i := 0; i < len(h.histograms); i += txChunkSize {
-			end := i + txChunkSize
-			if end > len(h.histograms) {
-				end = len(h.histograms)
-			}
-			db.writeMu.Lock()
-			err := db.flushHistograms(runID, h.histograms[i:end])
-			db.writeMu.Unlock()
-			if err != nil {
-				return err
-			}
-		}
-		db.writeMu.Lock()
-		_, err := db.Exec("UPDATE runs SET history_line_count = history_line_count + ?, updated_at = current_timestamp WHERE id = ?", h.lineCount, runID)
-		db.writeMu.Unlock()
-		if err != nil {
-			return fmt.Errorf("update line count: %w", err)
-		}
-	}
-
-	for i := 0; i < len(d.events); i += txChunkSize {
-		end := i + txChunkSize
-		if end > len(d.events) {
-			end = len(d.events)
-		}
-		db.writeMu.Lock()
-		err := db.flushEvents(runID, d.events[i:end])
-		db.writeMu.Unlock()
-		if err != nil {
-			return err
-		}
-	}
-	if len(d.events) > 0 {
-		db.writeMu.Lock()
-		_, err := db.Exec("UPDATE runs SET events_line_count = events_line_count + ?, updated_at = current_timestamp WHERE id = ?", len(d.events), runID)
-		db.writeMu.Unlock()
-		if err != nil {
-			return fmt.Errorf("update events count: %w", err)
-		}
-	}
-
-	for i := 0; i < len(d.logs); i += txChunkSize {
-		end := i + txChunkSize
-		if end > len(d.logs) {
-			end = len(d.logs)
-		}
-		db.writeMu.Lock()
-		err := db.flushLogs(runID, d.logs[i:end])
-		db.writeMu.Unlock()
-		if err != nil {
-			return err
-		}
-	}
-	if len(d.logs) > 0 {
-		db.writeMu.Lock()
-		_, err := db.Exec("UPDATE runs SET log_line_count = log_line_count + ?, updated_at = current_timestamp WHERE id = ?", len(d.logs), runID)
-		db.writeMu.Unlock()
-		if err != nil {
-			return fmt.Errorf("update log count: %w", err)
-		}
-	}
-
-	return nil
-}
-
 func (db *DB) flushScalars(runID string, scalars []parsedScalar) error {
 	tx, err := db.Begin()
 	if err != nil {
@@ -229,7 +149,7 @@ func (db *DB) flushHistograms(runID string, histograms []parsedHistogram) error 
 	return tx.Commit()
 }
 
-func (db *DB) flushEvents(runID string, events []pendingEvent) error {
+func (db *DB) flushEvents(runID string, events []eventItem) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -248,7 +168,7 @@ func (db *DB) flushEvents(runID string, events []pendingEvent) error {
 	return tx.Commit()
 }
 
-func (db *DB) flushLogs(runID string, logs []pendingLog) error {
+func (db *DB) flushLogs(runID string, logs []logItem) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return fmt.Errorf("begin tx: %w", err)
@@ -304,7 +224,21 @@ func (db *DB) StreamHistoryScalars(runID string, maxPoints int, filterKeys []str
 	bucketSize := 1
 	if maxPoints > 0 {
 		var totalRows int
-		db.QueryRow("SELECT history_line_count FROM runs WHERE id = ?", runID).Scan(&totalRows)
+		if xMin != nil || xMax != nil {
+			rangeFilter := " WHERE run_id = ?"
+			args := []interface{}{runID}
+			if xMin != nil {
+				rangeFilter += " AND step >= ?"
+				args = append(args, int(*xMin))
+			}
+			if xMax != nil {
+				rangeFilter += " AND step <= ?"
+				args = append(args, int(*xMax))
+			}
+			db.QueryRow("SELECT COUNT(DISTINCT step) FROM history_scalars"+rangeFilter, args...).Scan(&totalRows)
+		} else {
+			db.QueryRow("SELECT history_line_count FROM runs WHERE id = ?", runID).Scan(&totalRows)
+		}
 		if totalRows > maxPoints {
 			needsBucket = true
 			bucketSize = totalRows / maxPoints
@@ -521,7 +455,7 @@ func (db *DB) StreamHistoryHistograms(runID string, emit func(HistogramPoint) er
 }
 
 func (db *DB) UpdateRunSummary(runID string, summary json.RawMessage) error {
-	_, err := db.WriteExec("UPDATE runs SET summary = ?, updated_at = current_timestamp WHERE id = ?", string(summary), runID)
+	_, err := db.Exec("UPDATE runs SET summary = ?, updated_at = current_timestamp WHERE id = ?", string(summary), runID)
 	return err
 }
 
@@ -540,7 +474,10 @@ func (db *DB) InsertSystemEventBatch(runID string, rows []struct {
 	if len(rows) == 0 {
 		return nil
 	}
-	db.buf.AddEvents(runID, rows)
+	for _, r := range rows {
+		db.events <- eventItem{runID: runID, lineNum: r.LineNum, data: string(r.Data)}
+	}
+	db.counters <- counterDelta{runID: runID, column: "events_line_count", delta: len(rows)}
 	return nil
 }
 
@@ -559,7 +496,10 @@ func (db *DB) InsertConsoleLogBatch(runID string, rows []struct {
 	if len(rows) == 0 {
 		return nil
 	}
-	db.buf.AddLogs(runID, rows)
+	for _, r := range rows {
+		db.logs <- logItem{runID: runID, lineNum: r.LineNum, line: r.Line}
+	}
+	db.counters <- counterDelta{runID: runID, column: "log_line_count", delta: len(rows)}
 	return nil
 }
 

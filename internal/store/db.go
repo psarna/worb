@@ -14,6 +14,12 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+const entityChanSize = 1_000_000
+const entityBatchSize = 50_000
+const counterChanSize = 100_000
+const counterBatchSize = 10_000
+const flushEvery = 500 * time.Millisecond
+
 type flexTime struct {
 	time.Time
 }
@@ -49,17 +55,15 @@ func (ft flexTime) Value() (driver.Value, error) {
 
 type DB struct {
 	*sql.DB
-	Engine  string
-	buf     *writeBuffer
-	writeMu sync.Mutex
-}
-
-// WriteExec serializes a write operation through writeMu to avoid SQLITE_BUSY
-// contention with the background write buffer flush.
-func (db *DB) WriteExec(query string, args ...interface{}) (sql.Result, error) {
-	db.writeMu.Lock()
-	defer db.writeMu.Unlock()
-	return db.Exec(query, args...)
+	Engine     string
+	scalars    chan scalarItem
+	histograms chan histogramItem
+	events     chan eventItem
+	logs       chan logItem
+	counters   chan counterDelta
+	ctx        context.Context
+	cancel     context.CancelFunc
+	wg         sync.WaitGroup
 }
 
 func (db *DB) castJSON(col string) string {
@@ -108,20 +112,64 @@ func New(dataDir, engine string) (*DB, error) {
 		return nil, fmt.Errorf("unsupported db engine: %s", engine)
 	}
 
-	store := &DB{DB: db, Engine: engine}
+	ctx, cancel := context.WithCancel(context.Background())
+	store := &DB{DB: db, Engine: engine, ctx: ctx, cancel: cancel}
 	if err := store.migrate(); err != nil {
 		db.Close()
+		cancel()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
-	store.buf = newWriteBuffer(store)
+	store.startConsumer()
 	store.StartCleanup()
 
 	return store, nil
 }
 
+func (db *DB) startConsumer() {
+	db.scalars = make(chan scalarItem, entityChanSize)
+	db.histograms = make(chan histogramItem, entityChanSize)
+	db.events = make(chan eventItem, entityChanSize)
+	db.logs = make(chan logItem, entityChanSize)
+	db.counters = make(chan counterDelta, counterChanSize)
+
+	start := func(f func()) {
+		db.wg.Add(1)
+		go func() {
+			defer db.wg.Done()
+			f()
+		}()
+	}
+	start(func() { consumeBatches(db.ctx, db.scalars, entityBatchSize, flushEvery, db.processScalars) })
+	start(func() {
+		consumeBatches(db.ctx, db.histograms, entityBatchSize, flushEvery, db.processHistograms)
+	})
+	start(func() { consumeBatches(db.ctx, db.events, entityBatchSize, flushEvery, db.processEvents) })
+	start(func() { consumeBatches(db.ctx, db.logs, entityBatchSize, flushEvery, db.processLogs) })
+	start(func() {
+		consumeBatches(db.ctx, db.counters, counterBatchSize, flushEvery, db.processCounters)
+	})
+}
+
+func (db *DB) closeChannels() {
+	close(db.scalars)
+	close(db.histograms)
+	close(db.events)
+	close(db.logs)
+	close(db.counters)
+}
+
+// Flush synchronously drains pending writes. Used by tests.
+func (db *DB) Flush() {
+	db.closeChannels()
+	db.wg.Wait()
+	db.startConsumer()
+}
+
 func (db *DB) Close() error {
-	db.buf.Close()
+	db.closeChannels()
+	db.wg.Wait()
+	db.cancel()
 	return db.DB.Close()
 }
 
@@ -283,4 +331,3 @@ func (db *DB) migrateSQLite() error {
 
 	return nil
 }
-

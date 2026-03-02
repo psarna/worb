@@ -1,147 +1,106 @@
 package store
 
 import (
-	"encoding/json"
 	"log"
-	"sync"
-	"time"
 )
 
-const (
-	bufferFlushInterval = 500 * time.Millisecond
-)
-
-type pendingHistory struct {
-	scalars    []parsedScalar
-	histograms []parsedHistogram
-	lineCount  int
+type scalarItem struct {
+	runID string
+	parsedScalar
 }
 
-type pendingEvent struct {
+type histogramItem struct {
+	runID string
+	parsedHistogram
+}
+
+type eventItem struct {
+	runID   string
 	lineNum int
 	data    string
 }
 
-type pendingLog struct {
+type logItem struct {
+	runID   string
 	lineNum int
 	line    string
 }
 
-type pendingData struct {
-	history *pendingHistory
-	events  []pendingEvent
-	logs    []pendingLog
+type counterDelta struct {
+	runID  string
+	column string
+	delta  int
 }
 
-type writeBuffer struct {
-	mu    sync.Mutex
-	db    *DB
-	runs  map[string]*pendingData
-	timer *time.Timer
-}
-
-func newWriteBuffer(db *DB) *writeBuffer {
-	return &writeBuffer{
-		db:   db,
-		runs: make(map[string]*pendingData),
+func (db *DB) processScalars(items []scalarItem) error {
+	byRun := map[string][]parsedScalar{}
+	for _, item := range items {
+		byRun[item.runID] = append(byRun[item.runID], item.parsedScalar)
 	}
-}
-
-func (b *writeBuffer) pending(runID string) *pendingData {
-	p := b.runs[runID]
-	if p == nil {
-		p = &pendingData{}
-		b.runs[runID] = p
-	}
-	return p
-}
-
-func (b *writeBuffer) ensureTimer() {
-	if b.timer == nil {
-		b.timer = time.AfterFunc(bufferFlushInterval, b.flushAsync)
-	}
-}
-
-func (b *writeBuffer) Add(runID string, rows []struct {
-	Step int
-	Data json.RawMessage
-}) {
-	scalars, histograms := parseHistoryRows(rows)
-
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	p := b.pending(runID)
-	if p.history == nil {
-		p.history = &pendingHistory{}
-	}
-	p.history.scalars = append(p.history.scalars, scalars...)
-	p.history.histograms = append(p.history.histograms, histograms...)
-	p.history.lineCount += len(rows)
-
-	b.ensureTimer()
-}
-
-func (b *writeBuffer) AddEvents(runID string, rows []struct {
-	LineNum int
-	Data    json.RawMessage
-}) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	p := b.pending(runID)
-	for _, r := range rows {
-		p.events = append(p.events, pendingEvent{lineNum: r.LineNum, data: string(r.Data)})
-	}
-
-	b.ensureTimer()
-}
-
-func (b *writeBuffer) AddLogs(runID string, rows []struct {
-	LineNum int
-	Line    string
-}) {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-
-	p := b.pending(runID)
-	for _, r := range rows {
-		p.logs = append(p.logs, pendingLog{lineNum: r.LineNum, line: r.Line})
-	}
-
-	b.ensureTimer()
-}
-
-func (b *writeBuffer) flushAsync() {
-	b.mu.Lock()
-	if b.timer != nil {
-		b.timer.Stop()
-		b.timer = nil
-	}
-	toFlush := b.runs
-	b.runs = make(map[string]*pendingData)
-	b.mu.Unlock()
-
-	b.flush(toFlush)
-}
-
-func (b *writeBuffer) flush(batches map[string]*pendingData) {
-	for runID, p := range batches {
-		if err := b.db.flushRunData(runID, p); err != nil {
-			log.Printf("buffer flush %s: %v", runID, err)
+	for runID, scalars := range byRun {
+		if err := db.flushScalars(runID, scalars); err != nil {
+			log.Printf("[flush] ERROR scalars run=%s: %v", runID[:8], err)
+		} else {
+			log.Printf("[flush] OK scalars run=%s count=%d", runID[:8], len(scalars))
 		}
 	}
+	return nil
 }
 
-func (b *writeBuffer) Close() {
-	b.mu.Lock()
-	if b.timer != nil {
-		b.timer.Stop()
-		b.timer = nil
+func (db *DB) processHistograms(items []histogramItem) error {
+	byRun := map[string][]parsedHistogram{}
+	for _, item := range items {
+		byRun[item.runID] = append(byRun[item.runID], item.parsedHistogram)
 	}
-	toFlush := b.runs
-	b.runs = make(map[string]*pendingData)
-	b.mu.Unlock()
+	for runID, histograms := range byRun {
+		if err := db.flushHistograms(runID, histograms); err != nil {
+			log.Printf("[flush] ERROR histograms run=%s: %v", runID[:8], err)
+		} else {
+			log.Printf("[flush] OK histograms run=%s count=%d", runID[:8], len(histograms))
+		}
+	}
+	return nil
+}
 
-	b.flush(toFlush)
+func (db *DB) processEvents(items []eventItem) error {
+	byRun := map[string][]eventItem{}
+	for _, item := range items {
+		byRun[item.runID] = append(byRun[item.runID], item)
+	}
+	for runID, events := range byRun {
+		if err := db.flushEvents(runID, events); err != nil {
+			log.Printf("[flush] ERROR events run=%s: %v", runID[:8], err)
+		}
+	}
+	return nil
+}
+
+func (db *DB) processLogs(items []logItem) error {
+	byRun := map[string][]logItem{}
+	for _, item := range items {
+		byRun[item.runID] = append(byRun[item.runID], item)
+	}
+	for runID, logs := range byRun {
+		if err := db.flushLogs(runID, logs); err != nil {
+			log.Printf("[flush] ERROR logs run=%s: %v", runID[:8], err)
+		}
+	}
+	return nil
+}
+
+func (db *DB) processCounters(items []counterDelta) error {
+	type key struct {
+		runID  string
+		column string
+	}
+	merged := map[key]int{}
+	for _, item := range items {
+		merged[key{item.runID, item.column}] += item.delta
+	}
+	for k, delta := range merged {
+		if _, err := db.Exec("UPDATE runs SET "+k.column+" = "+k.column+" + ?, updated_at = current_timestamp WHERE id = ?", delta, k.runID); err != nil {
+			log.Printf("[flush] ERROR %s run=%s: %v", k.column, k.runID[:8], err)
+		}
+	}
+	return nil
 }

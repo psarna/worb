@@ -16,9 +16,7 @@ func (db *DB) StartCleanup() {
 			if !db.hasDeletedData() {
 				continue
 			}
-			db.writeMu.Lock()
 			_, err := db.purgeDeletedData(5000)
-			db.writeMu.Unlock()
 			if err != nil {
 				log.Printf("cleanup error: %v", err)
 			}
