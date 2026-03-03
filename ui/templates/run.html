@@ -405,6 +405,7 @@ ORDER BY step LIMIT 20</textarea>
         chartSettings.xMax = String(Math.round(max));
         document.getElementById('x-min').value = chartSettings.xMin;
         document.getElementById('x-max').value = chartSettings.xMax;
+        reapplySettings();
     }
 
     function resetAllZoom() {
@@ -426,6 +427,7 @@ ORDER BY step LIMIT 20</textarea>
         chartSettings.xMax = '';
         document.getElementById('x-min').value = '';
         document.getElementById('x-max').value = '';
+        reapplySettings();
     }
 
     let expandedOverlay = null;

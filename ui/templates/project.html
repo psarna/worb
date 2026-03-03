@@ -537,6 +537,7 @@
         chartSettings.xMax = String(Math.round(max));
         document.getElementById('x-min').value = chartSettings.xMin;
         document.getElementById('x-max').value = chartSettings.xMax;
+        reapplySettings();
     }
 
     function resetAllZoom() {
@@ -558,6 +559,7 @@
         chartSettings.xMax = '';
         document.getElementById('x-min').value = '';
         document.getElementById('x-max').value = '';
+        reapplySettings();
     }
 
     let expandedOverlay = null;
