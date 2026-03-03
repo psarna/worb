@@ -3,7 +3,6 @@ package store
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
 )
 
 func (db *DB) InsertHistory(runID string, step int, data json.RawMessage) error {
@@ -184,7 +183,12 @@ func (db *DB) flushLogs(runID string, logs []logItem) error {
 }
 
 func (db *DB) GetHistoryKeys(runID string) ([]string, error) {
-	rows, err := db.Query("SELECT DISTINCT key FROM history_scalars WHERE run_id = ?", runID)
+	rows, err := db.Query(`WITH RECURSIVE keys(k) AS (
+		SELECT MIN(key) FROM history_scalars WHERE run_id = ?
+		UNION ALL
+		SELECT (SELECT MIN(key) FROM history_scalars WHERE run_id = ? AND key > k)
+		FROM keys WHERE k IS NOT NULL
+	) SELECT k FROM keys WHERE k IS NOT NULL ORDER BY k`, runID, runID)
 	if err != nil {
 		return nil, err
 	}
@@ -198,7 +202,6 @@ func (db *DB) GetHistoryKeys(runID string) ([]string, error) {
 		}
 		keys = append(keys, k)
 	}
-	sort.Strings(keys)
 	return keys, rows.Err()
 }
 
