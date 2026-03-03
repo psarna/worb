@@ -405,7 +405,6 @@ ORDER BY step LIMIT 20</textarea>
         chartSettings.xMax = String(Math.round(max));
         document.getElementById('x-min').value = chartSettings.xMin;
         document.getElementById('x-max').value = chartSettings.xMax;
-        if (_rerenderAll) _rerenderAll();
     }
 
     function resetAllZoom() {
@@ -427,7 +426,6 @@ ORDER BY step LIMIT 20</textarea>
         chartSettings.xMax = '';
         document.getElementById('x-min').value = '';
         document.getElementById('x-max').value = '';
-        if (_rerenderAll) _rerenderAll();
     }
 
     let expandedOverlay = null;
@@ -688,7 +686,6 @@ ORDER BY step LIMIT 20</textarea>
             }
             grid.innerHTML = '';
             for (const key of Object.keys(categoryElements)) delete categoryElements[key];
-            initializedCategories.clear();
         }
 
         const collapsedCategories = new Set();
