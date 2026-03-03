@@ -83,7 +83,7 @@ func New(dataDir, engine string) (*DB, error) {
 		if err != nil {
 			return nil, fmt.Errorf("open sqlite: %w", err)
 		}
-		db.SetMaxOpenConns(2)
+		db.SetMaxOpenConns(32)
 	case "turso":
 		url := os.Getenv("TURSO_URL")
 		if url == "" {
