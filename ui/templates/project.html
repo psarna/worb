@@ -1280,16 +1280,6 @@
             }
         };
 
-        function destroyAll() {
-            for (const key of Object.keys(allCharts)) {
-                everyChart.delete(allCharts[key]);
-                allCharts[key].destroy();
-                delete allCharts[key];
-            }
-            grid.innerHTML = '';
-            for (const key of Object.keys(categoryElements)) delete categoryElements[key];
-        }
-
         _rerenderAll = function() {
             const xr = currentXRange();
             if (xr !== prevXRange) {
@@ -1303,7 +1293,10 @@
                 lazyQueue = [];
                 if (lazyTimer) { clearTimeout(lazyTimer); lazyTimer = null; }
             }
-            destroyAll();
+            // Destroy chart instances but preserve category DOM and collapse state
+            for (const cat of Object.keys(categoryElements)) {
+                destroyCategoryCharts(cat);
+            }
             render();
         };
 

@@ -678,16 +678,6 @@ ORDER BY step LIMIT 20</textarea>
             return chartSettings.xMin + ',' + chartSettings.xMax;
         }
 
-        function destroyAll() {
-            for (const key of Object.keys(allCharts)) {
-                everyChart.delete(allCharts[key]);
-                allCharts[key].destroy();
-                delete allCharts[key];
-            }
-            grid.innerHTML = '';
-            for (const key of Object.keys(categoryElements)) delete categoryElements[key];
-        }
-
         const collapsedCategories = new Set();
         const categoryElements = {};
         let searchFilter = '';
@@ -1136,7 +1126,10 @@ ORDER BY step LIMIT 20</textarea>
                 lazyQueue = [];
                 if (lazyTimer) { clearTimeout(lazyTimer); lazyTimer = null; }
             }
-            destroyAll();
+            // Destroy chart instances but preserve category DOM and collapse state
+            for (const cat of Object.keys(categoryElements)) {
+                destroyCategoryCharts(cat);
+            }
             render();
         };
 
