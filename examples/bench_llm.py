@@ -29,7 +29,7 @@ import wandb
 @dataclass
 class Config:
     # server
-    base_url: str = "http://localhost:8080"
+    base_url: str = ""
     api_key: str = "bench-" + "f" * 40
 
     # model
@@ -46,16 +46,14 @@ class Config:
     tp: int = 8
     pp: int = 16
     ep: int = 16
-    dp: int = 5
-    total_gpus: int = 10240
     gpus_per_node: int = 8
     num_nodes: int = 1280
 
     # training
-    num_steps: int = 50000
-    global_batch_tokens: int = 4_194_304
-    seq_length: int = 8192
-    warmup_steps: int = 2000
+    num_steps: int = 0
+    global_batch_tokens: int = 13_107_200
+    seq_length: int = 32768
+    warmup_steps: int = 5000
     max_lr: float = 1.5e-4
     min_lr: float = 1.5e-5
 
@@ -69,17 +67,21 @@ class Config:
     # benchmark
     pp_stages: int = 16
     seed: int = 42
-    project: str = "bench-moe-650b"
+    project: str = ""
 
     # data sources
     data_sources: tuple = ("web", "code", "books", "academic", "conversation")
 
     # derived (set in __post_init__)
+    total_gpus: int = field(init=False, default=0)
+    dp: int = field(init=False, default=0)
     dataset_tokens: float = field(init=False, default=0.0)
     gpu_peak_tflops: float = field(init=False, default=0.0)
 
     def __post_init__(self):
-        self.dataset_tokens = 15e12
+        self.total_gpus = self.num_nodes * self.gpus_per_node
+        self.dp = self.total_gpus // (self.tp * self.pp)
+        self.dataset_tokens = self.num_steps * self.global_batch_tokens
         self.gpu_peak_tflops = 989.0  # H100 SXM bf16
 
 
@@ -477,12 +479,14 @@ def run_benchmark(cfg: Config):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="worb benchmark: MoE-650B training simulation")
-    parser.add_argument("--steps", type=int, default=50000)
+    parser = argparse.ArgumentParser(description="worb benchmark: GPT-4 class training simulation")
+    parser.add_argument("--steps", type=int, default=1_000_000)
     parser.add_argument("--base-url", default="http://localhost:8080")
     parser.add_argument("--num-experts", type=int, default=128)
     parser.add_argument("--num-layers", type=int, default=128)
     parser.add_argument("--num-nodes", type=int, default=1280)
+    parser.add_argument("--batch-tokens", type=int, default=13_107_200)
+    parser.add_argument("--seq-length", type=int, default=32768)
     parser.add_argument("--pp-stages", type=int, default=16)
     parser.add_argument("--expert-every", type=int, default=10)
     parser.add_argument("--layer-every", type=int, default=50)
@@ -490,15 +494,17 @@ def main():
     parser.add_argument("--val-every", type=int, default=500)
     parser.add_argument("--ckpt-every", type=int, default=1000)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--project", default="bench-moe-650b")
+    parser.add_argument("--project", default="bench-gpt4-class")
     args = parser.parse_args()
 
     cfg = Config(
-        num_steps=args.steps,
         base_url=args.base_url,
+        num_steps=args.steps,
         num_experts=args.num_experts,
         num_layers=args.num_layers,
         num_nodes=args.num_nodes,
+        global_batch_tokens=args.batch_tokens,
+        seq_length=args.seq_length,
         pp_stages=args.pp_stages,
         expert_every=args.expert_every,
         layer_every=args.layer_every,
@@ -509,8 +515,10 @@ def main():
         project=args.project,
     )
 
-    print(f"worb benchmark: MoE-650B on {cfg.total_gpus} GPUs ({cfg.num_nodes} nodes)")
-    print(f"  steps={cfg.num_steps}  experts={cfg.num_experts}  layers={cfg.num_layers}")
+    print(f"worb benchmark: GPT-4 class on {cfg.total_gpus} GPUs ({cfg.num_nodes} nodes)")
+    print(f"  steps={cfg.num_steps}  batch_tokens={cfg.global_batch_tokens:,}  seq_len={cfg.seq_length}")
+    print(f"  total tokens: {cfg.dataset_tokens:.1e}")
+    print(f"  experts={cfg.num_experts}  layers={cfg.num_layers}")
     print(f"  device metrics every {cfg.device_every} steps ({cfg.num_nodes * 6:,} keys)")
     print(f"  expert metrics every {cfg.expert_every} steps ({cfg.num_experts * 2:,} keys)")
     print(f"  layer metrics every {cfg.layer_every} steps ({cfg.num_layers * 3:,} keys)")
