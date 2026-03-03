@@ -241,7 +241,13 @@ func (db *DB) GetRunByName(projectID, name string) (*Run, error) {
 }
 
 func (db *DB) ListRuns(projectID string) ([]*Run, error) {
-	rows, err := db.Query(`SELECT id FROM runs WHERE project_id = ? AND deleted_at IS NULL ORDER BY created_at DESC`, projectID)
+	rows, err := db.Query(fmt.Sprintf(`SELECT r.id, r.project_id, r.name, r.display_name,
+		%s, %s, r.state,
+		r.host, r.program, r.git_commit, %s, r.notes, r.group_name, r.job_type, r.sweep_name,
+		r.history_line_count, r.events_line_count, r.log_line_count,
+		r.created_at, r.updated_at, r.heartbeat_at
+		FROM runs r WHERE r.project_id = ? AND r.deleted_at IS NULL ORDER BY r.created_at DESC`,
+		db.castJSON("r.config"), db.castJSON("r.summary"), db.castJSON("r.tags")), projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -249,13 +255,35 @@ func (db *DB) ListRuns(projectID string) ([]*Run, error) {
 
 	var runs []*Run
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		r := &Run{}
+		var config, summary, tags sql.NullString
+		var displayName, host, program, gitCommit, notes, groupName, jobType, sweepName sql.NullString
+		var createdAt, updatedAt, heartbeatAt flexTime
+		if err := rows.Scan(&r.ID, &r.ProjectID, &r.Name, &displayName, &config, &summary, &r.State,
+			&host, &program, &gitCommit, &tags, &notes, &groupName, &jobType, &sweepName,
+			&r.HistoryLineCount, &r.EventsLineCount, &r.LogLineCount,
+			&createdAt, &updatedAt, &heartbeatAt); err != nil {
 			return nil, err
 		}
-		r, err := db.GetRun(id)
-		if err != nil {
-			return nil, err
+		r.CreatedAt = createdAt.Time
+		r.UpdatedAt = updatedAt.Time
+		r.HeartbeatAt = heartbeatAt.Time
+		r.DisplayName = displayName.String
+		r.Host = host.String
+		r.Program = program.String
+		r.GitCommit = gitCommit.String
+		r.Notes = notes.String
+		r.GroupName = groupName.String
+		r.JobType = jobType.String
+		r.SweepName = sweepName.String
+		if config.Valid {
+			r.Config = json.RawMessage(config.String)
+		}
+		if summary.Valid {
+			r.Summary = json.RawMessage(summary.String)
+		}
+		if tags.Valid {
+			r.Tags = json.RawMessage(tags.String)
 		}
 		runs = append(runs, r)
 	}
@@ -296,13 +324,19 @@ func (db *DB) DeleteProject(projectID string) error {
 }
 
 func (db *DB) ListRunsFiltered(projectID string, displayName string) ([]*Run, error) {
-	query := `SELECT id FROM runs WHERE project_id = ? AND deleted_at IS NULL`
+	query := fmt.Sprintf(`SELECT r.id, r.project_id, r.name, r.display_name,
+		%s, %s, r.state,
+		r.host, r.program, r.git_commit, %s, r.notes, r.group_name, r.job_type, r.sweep_name,
+		r.history_line_count, r.events_line_count, r.log_line_count,
+		r.created_at, r.updated_at, r.heartbeat_at
+		FROM runs r WHERE r.project_id = ? AND r.deleted_at IS NULL`,
+		db.castJSON("r.config"), db.castJSON("r.summary"), db.castJSON("r.tags"))
 	args := []any{projectID}
 	if displayName != "" {
-		query += ` AND display_name = ?`
+		query += ` AND r.display_name = ?`
 		args = append(args, displayName)
 	}
-	query += ` ORDER BY created_at DESC`
+	query += ` ORDER BY r.created_at DESC`
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
@@ -312,13 +346,35 @@ func (db *DB) ListRunsFiltered(projectID string, displayName string) ([]*Run, er
 
 	var runs []*Run
 	for rows.Next() {
-		var id string
-		if err := rows.Scan(&id); err != nil {
+		r := &Run{}
+		var config, summary, tags sql.NullString
+		var dn, host, program, gitCommit, notes, groupName, jobType, sweepName sql.NullString
+		var createdAt, updatedAt, heartbeatAt flexTime
+		if err := rows.Scan(&r.ID, &r.ProjectID, &r.Name, &dn, &config, &summary, &r.State,
+			&host, &program, &gitCommit, &tags, &notes, &groupName, &jobType, &sweepName,
+			&r.HistoryLineCount, &r.EventsLineCount, &r.LogLineCount,
+			&createdAt, &updatedAt, &heartbeatAt); err != nil {
 			return nil, err
 		}
-		r, err := db.GetRun(id)
-		if err != nil {
-			return nil, err
+		r.CreatedAt = createdAt.Time
+		r.UpdatedAt = updatedAt.Time
+		r.HeartbeatAt = heartbeatAt.Time
+		r.DisplayName = dn.String
+		r.Host = host.String
+		r.Program = program.String
+		r.GitCommit = gitCommit.String
+		r.Notes = notes.String
+		r.GroupName = groupName.String
+		r.JobType = jobType.String
+		r.SweepName = sweepName.String
+		if config.Valid {
+			r.Config = json.RawMessage(config.String)
+		}
+		if summary.Valid {
+			r.Summary = json.RawMessage(summary.String)
+		}
+		if tags.Valid {
+			r.Tags = json.RawMessage(tags.String)
 		}
 		runs = append(runs, r)
 	}
