@@ -94,6 +94,9 @@ func (db *DB) flushScalars(runID string, scalars []parsedScalar) error {
 		return fmt.Errorf("begin tx: %w", err)
 	}
 	defer tx.Rollback()
+
+	// Collect unique keys from this batch
+	keySet := map[string]struct{}{}
 	for i := 0; i < len(scalars); i += multiRowSize {
 		end := i + multiRowSize
 		if end > len(scalars) {
@@ -108,11 +111,31 @@ func (db *DB) flushScalars(runID string, scalars []parsedScalar) error {
 			}
 			query += "(?,?,?,?,?)"
 			args = append(args, runID, s.step, s.key, s.value, s.xStep)
+			keySet[s.key] = struct{}{}
 		}
 		if _, err := tx.Exec(query, args...); err != nil {
 			return fmt.Errorf("insert scalars: %w", err)
 		}
 	}
+
+	// Insert new keys into run_keys
+	if len(keySet) > 0 {
+		query := "INSERT OR IGNORE INTO run_keys (run_id, key) VALUES "
+		args := make([]interface{}, 0, len(keySet)*2)
+		first := true
+		for k := range keySet {
+			if !first {
+				query += ","
+			}
+			query += "(?,?)"
+			args = append(args, runID, k)
+			first = false
+		}
+		if _, err := tx.Exec(query, args...); err != nil {
+			return fmt.Errorf("insert run_keys: %w", err)
+		}
+	}
+
 	return tx.Commit()
 }
 
@@ -183,12 +206,7 @@ func (db *DB) flushLogs(runID string, logs []logItem) error {
 }
 
 func (db *DB) GetHistoryKeys(runID string) ([]string, error) {
-	rows, err := db.Query(`WITH RECURSIVE keys(k) AS (
-		SELECT MIN(key) FROM history_scalars WHERE run_id = ?
-		UNION ALL
-		SELECT (SELECT MIN(key) FROM history_scalars WHERE run_id = ? AND key > k)
-		FROM keys WHERE k IS NOT NULL
-	) SELECT k FROM keys WHERE k IS NOT NULL ORDER BY k`, runID, runID)
+	rows, err := db.Query("SELECT key FROM run_keys WHERE run_id = ? ORDER BY key", runID)
 	if err != nil {
 		return nil, err
 	}

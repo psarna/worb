@@ -289,5 +289,11 @@ func (db *DB) migrateSQLite() error {
 	db.Exec("ALTER TABLE runs ADD COLUMN deleted_at TEXT")
 	db.Exec("ALTER TABLE projects ADD COLUMN deleted_at TEXT")
 
+	db.Exec(`CREATE TABLE IF NOT EXISTS run_keys (
+		run_id TEXT NOT NULL REFERENCES runs(id),
+		key TEXT NOT NULL,
+		PRIMARY KEY (run_id, key)
+	) WITHOUT ROWID`)
+
 	return nil
 }
