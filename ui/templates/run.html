@@ -112,7 +112,7 @@
                     <div class="sql-editor-wrap">
                         <pre id="sql-highlight" aria-hidden="true"></pre>
                         <textarea id="sql-input" spellcheck="false">-- engine: {{.DBEngine}}
-SELECT step, data FROM history
+SELECT step, key, value FROM history_scalars
 WHERE run_id = '{{.Run.ID}}'
 ORDER BY step LIMIT 20</textarea>
                     </div>
