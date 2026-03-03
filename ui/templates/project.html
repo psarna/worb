@@ -1357,8 +1357,14 @@
                 for (const key of keys) {
                     if (!metrics[key]) metrics[key] = {};
                 }
+                fetchGeneration++;
+                for (const k in metrics) {
+                    for (const rid in metrics[k]) metrics[k][rid] = [];
+                }
                 loadedKeys.clear();
                 pendingKeys.clear();
+                lazyQueue = [];
+                if (lazyTimer) { clearTimeout(lazyTimer); lazyTimer = null; }
                 render();
                 if (allKeyNames) {
                     for (const key of allKeyNames) requestLazyLoad(key);
