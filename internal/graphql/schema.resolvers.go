@@ -12,6 +12,7 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/sarna/worb/internal/auth"
 	"github.com/sarna/worb/internal/store"
 )
 
@@ -367,12 +368,13 @@ func (r *projectResolver) Bucket(ctx context.Context, obj *Project, name string,
 
 // Viewer is the resolver for the viewer field.
 func (r *queryResolver) Viewer(ctx context.Context) (*User, error) {
+	entity := auth.EntityFromContext(ctx)
 	flags := "{}"
 	return &User{
-		ID:       "local-user",
-		Username: "local",
-		Email:    "local@worb.dev",
-		Entity:   "local",
+		ID:       entity + "-user",
+		Username: entity,
+		Email:    entity + "@worb.cloud",
+		Entity:   entity,
 		Flags:    &flags,
 		Teams: &TeamConnection{
 			Edges: []*TeamEdge{},

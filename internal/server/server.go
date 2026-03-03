@@ -86,9 +86,10 @@ func (s *Server) setupRoutes() {
 	r.Get("/files/upload/{token}", s.files.Download)
 
 	r.Get("/api/v1/viewer", func(w http.ResponseWriter, r *http.Request) {
+		entity := auth.EntityFromContext(r.Context())
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
-			"entity": "local",
+			"entity": entity,
 			"flags":  "{}",
 			"teams":  []any{},
 		})
@@ -150,7 +151,7 @@ func corsMiddleware(next http.Handler) http.Handler {
 }
 
 func (s *Server) apiListProjects(w http.ResponseWriter, r *http.Request) {
-	projects, err := s.store.ListProjects("local")
+	projects, err := s.store.ListProjects(auth.EntityFromContext(r.Context()))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

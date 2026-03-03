@@ -30,7 +30,7 @@ import wandb
 class Config:
     # server
     base_url: str = ""
-    api_key: str = "bench-" + "f" * 40
+    api_key: str = "dev-" + "lo" * 20 + "_bench"
 
     # model
     total_params_b: float = 650.0

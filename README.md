@@ -24,7 +24,7 @@ import wandb
 
 os.environ["WANDB_DIR"] = "worb"
 os.environ["WANDB_BASE_URL"] = "http://localhost:8080"
-os.environ["WANDB_API_KEY"] = "dev-"+40*"f"
+os.environ["WANDB_API_KEY"] = "dev-"+"lo"*20+"_example"
 
 wandb.init(project="test-project", name="test-run")
 for i in range(100):
