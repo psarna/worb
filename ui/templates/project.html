@@ -101,7 +101,7 @@
                     <td>
                         <a href="/runs/{{.ID}}">{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Name}}{{end}}</a>
                     </td>
-                    <td><span class="badge {{.State}}">{{.State}}</span></td>
+                    <td><span class="badge {{.State}}">{{.State}}</span>{{if gt .ReceivedHistoryCount .HistoryLineCount}} <span class="processing-wrap" data-tip="{{.HistoryLineCount}} / {{.ReceivedHistoryCount}} steps processed"><span class="processing-spinner"></span></span>{{end}}</td>
                     <td>{{.HistoryLineCount}}</td>
                     <td style="color: var(--text-secondary);">{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
                     <td><button class="btn-delete" onclick="event.stopPropagation(); deleteRun('{{.ID}}', this)" title="Delete run"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5.33 4V2.67a1.33 1.33 0 011.34-1.34h2.66a1.33 1.33 0 011.34 1.34V4M12.67 4v9.33a1.33 1.33 0 01-1.34 1.34H4.67a1.33 1.33 0 01-1.34-1.34V4h9.34z"/></svg></button></td>

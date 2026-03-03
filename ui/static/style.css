@@ -79,6 +79,39 @@ h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
 .badge.finished { background: rgba(88, 166, 255, 0.2); color: var(--accent); }
 .badge.crashed { background: rgba(248, 81, 73, 0.2); color: var(--red); }
 .badge.failed { background: rgba(248, 81, 73, 0.2); color: var(--red); }
+.processing-wrap {
+    position: relative;
+    display: inline-block;
+    vertical-align: middle;
+    margin-left: 6px;
+    cursor: help;
+}
+.processing-spinner {
+    display: block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid var(--border);
+    border-top-color: var(--yellow);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+.processing-wrap:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: calc(100% + 6px);
+    background: var(--surface);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 4px 8px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 100;
+    pointer-events: none;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .run-header {
     display: flex;

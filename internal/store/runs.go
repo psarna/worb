@@ -32,9 +32,10 @@ type Run struct {
 	GroupName        string
 	JobType          string
 	SweepName        string
-	HistoryLineCount int
-	EventsLineCount  int
-	LogLineCount     int
+	HistoryLineCount      int
+	EventsLineCount       int
+	LogLineCount          int
+	ReceivedHistoryCount  int
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	HeartbeatAt      time.Time
@@ -190,6 +191,10 @@ func (db *DB) FinishRun(id string) error {
 	return err
 }
 
+func (db *DB) IncrReceivedHistoryCount(id string, delta int) {
+	db.Exec("UPDATE runs SET received_history_count = received_history_count + ? WHERE id = ?", delta, id)
+}
+
 func (db *DB) GetRun(id string) (*Run, error) {
 	r := &Run{}
 	var config, summary, tags sql.NullString
@@ -198,12 +203,12 @@ func (db *DB) GetRun(id string) (*Run, error) {
 	err := db.QueryRow(fmt.Sprintf(`SELECT r.id, r.project_id, r.name, r.display_name,
 		%s, %s, r.state,
 		r.host, r.program, r.git_commit, %s, r.notes, r.group_name, r.job_type, r.sweep_name,
-		r.history_line_count, r.events_line_count, r.log_line_count,
+		r.history_line_count, r.events_line_count, r.log_line_count, COALESCE(r.received_history_count, 0),
 		r.created_at, r.updated_at, r.heartbeat_at
 		FROM runs r WHERE r.id = ? AND r.deleted_at IS NULL`, db.castJSON("r.config"), db.castJSON("r.summary"), db.castJSON("r.tags")), id).
 		Scan(&r.ID, &r.ProjectID, &r.Name, &displayName, &config, &summary, &r.State,
 			&host, &program, &gitCommit, &tags, &notes, &groupName, &jobType, &sweepName,
-			&r.HistoryLineCount, &r.EventsLineCount, &r.LogLineCount,
+			&r.HistoryLineCount, &r.EventsLineCount, &r.LogLineCount, &r.ReceivedHistoryCount,
 			&createdAt, &updatedAt, &heartbeatAt)
 	r.CreatedAt = createdAt.Time
 	r.UpdatedAt = updatedAt.Time
@@ -244,7 +249,7 @@ func (db *DB) ListRuns(projectID string) ([]*Run, error) {
 	rows, err := db.Query(fmt.Sprintf(`SELECT r.id, r.project_id, r.name, r.display_name,
 		%s, %s, r.state,
 		r.host, r.program, r.git_commit, %s, r.notes, r.group_name, r.job_type, r.sweep_name,
-		r.history_line_count, r.events_line_count, r.log_line_count,
+		r.history_line_count, r.events_line_count, r.log_line_count, COALESCE(r.received_history_count, 0),
 		r.created_at, r.updated_at, r.heartbeat_at
 		FROM runs r WHERE r.project_id = ? AND r.deleted_at IS NULL ORDER BY r.created_at DESC`,
 		db.castJSON("r.config"), db.castJSON("r.summary"), db.castJSON("r.tags")), projectID)
@@ -261,7 +266,7 @@ func (db *DB) ListRuns(projectID string) ([]*Run, error) {
 		var createdAt, updatedAt, heartbeatAt flexTime
 		if err := rows.Scan(&r.ID, &r.ProjectID, &r.Name, &displayName, &config, &summary, &r.State,
 			&host, &program, &gitCommit, &tags, &notes, &groupName, &jobType, &sweepName,
-			&r.HistoryLineCount, &r.EventsLineCount, &r.LogLineCount,
+			&r.HistoryLineCount, &r.EventsLineCount, &r.LogLineCount, &r.ReceivedHistoryCount,
 			&createdAt, &updatedAt, &heartbeatAt); err != nil {
 			return nil, err
 		}
@@ -327,7 +332,7 @@ func (db *DB) ListRunsFiltered(projectID string, displayName string) ([]*Run, er
 	query := fmt.Sprintf(`SELECT r.id, r.project_id, r.name, r.display_name,
 		%s, %s, r.state,
 		r.host, r.program, r.git_commit, %s, r.notes, r.group_name, r.job_type, r.sweep_name,
-		r.history_line_count, r.events_line_count, r.log_line_count,
+		r.history_line_count, r.events_line_count, r.log_line_count, COALESCE(r.received_history_count, 0),
 		r.created_at, r.updated_at, r.heartbeat_at
 		FROM runs r WHERE r.project_id = ? AND r.deleted_at IS NULL`,
 		db.castJSON("r.config"), db.castJSON("r.summary"), db.castJSON("r.tags"))
@@ -352,7 +357,7 @@ func (db *DB) ListRunsFiltered(projectID string, displayName string) ([]*Run, er
 		var createdAt, updatedAt, heartbeatAt flexTime
 		if err := rows.Scan(&r.ID, &r.ProjectID, &r.Name, &dn, &config, &summary, &r.State,
 			&host, &program, &gitCommit, &tags, &notes, &groupName, &jobType, &sweepName,
-			&r.HistoryLineCount, &r.EventsLineCount, &r.LogLineCount,
+			&r.HistoryLineCount, &r.EventsLineCount, &r.LogLineCount, &r.ReceivedHistoryCount,
 			&createdAt, &updatedAt, &heartbeatAt); err != nil {
 			return nil, err
 		}
