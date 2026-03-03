@@ -20,8 +20,11 @@ func (db *DB) InsertHistoryBatch(runID string, rows []struct {
 	if len(rows) == 0 {
 		return nil
 	}
-	db.ingest <- rawPayload{runID: runID, history: rows}
-	return nil
+	entry := walEntry{RunID: runID}
+	for _, r := range rows {
+		entry.History = append(entry.History, walHistoryRow{Step: r.Step, Data: r.Data})
+	}
+	return db.wal.Append(entry)
 }
 
 type parsedScalar struct {
@@ -467,8 +470,11 @@ func (db *DB) InsertSystemEventBatch(runID string, rows []struct {
 	if len(rows) == 0 {
 		return nil
 	}
-	db.ingest <- rawPayload{runID: runID, events: rows}
-	return nil
+	entry := walEntry{RunID: runID}
+	for _, r := range rows {
+		entry.Events = append(entry.Events, walEventRow{LineNum: r.LineNum, Data: r.Data})
+	}
+	return db.wal.Append(entry)
 }
 
 func (db *DB) InsertConsoleLog(runID string, lineNum int, line, stream string) error {
@@ -486,8 +492,11 @@ func (db *DB) InsertConsoleLogBatch(runID string, rows []struct {
 	if len(rows) == 0 {
 		return nil
 	}
-	db.ingest <- rawPayload{runID: runID, logs: rows}
-	return nil
+	entry := walEntry{RunID: runID}
+	for _, r := range rows {
+		entry.Logs = append(entry.Logs, walLogRow{LineNum: r.LineNum, Line: r.Line})
+	}
+	return db.wal.Append(entry)
 }
 
 func (db *DB) GetConsoleLogs(runID string) ([]string, error) {

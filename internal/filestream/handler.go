@@ -83,6 +83,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			if err := h.Store.InsertHistoryBatch(run.ID, batch); err != nil {
 				log.Printf("insert history batch: %v", err)
+				w.Header().Set("Retry-After", "5")
+				http.Error(w, "WAL full", http.StatusServiceUnavailable)
+				return
 			}
 
 		case filename == "wandb-summary.json":
@@ -111,6 +114,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			if err := h.Store.InsertSystemEventBatch(run.ID, batch); err != nil {
 				log.Printf("insert events batch: %v", err)
+				w.Header().Set("Retry-After", "5")
+				http.Error(w, "WAL full", http.StatusServiceUnavailable)
+				return
 			}
 
 		case filename == "output.log":
@@ -126,6 +132,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			if err := h.Store.InsertConsoleLogBatch(run.ID, batch); err != nil {
 				log.Printf("insert logs batch: %v", err)
+				w.Header().Set("Retry-After", "5")
+				http.Error(w, "WAL full", http.StatusServiceUnavailable)
+				return
 			}
 		}
 	}

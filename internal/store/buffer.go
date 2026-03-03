@@ -1,53 +1,8 @@
 package store
 
 import (
-	"encoding/json"
 	"log"
 )
-
-type rawPayload struct {
-	runID   string
-	history []struct {
-		Step int
-		Data json.RawMessage
-	}
-	events []struct {
-		LineNum int
-		Data    json.RawMessage
-	}
-	logs []struct {
-		LineNum int
-		Line    string
-	}
-}
-
-func (db *DB) processIngest(payloads []rawPayload) error {
-	for _, p := range payloads {
-		if len(p.history) > 0 {
-			scalars, histograms := parseHistoryRows(p.history)
-			for _, s := range scalars {
-				db.scalars <- scalarItem{runID: p.runID, parsedScalar: s}
-			}
-			for _, h := range histograms {
-				db.histograms <- histogramItem{runID: p.runID, parsedHistogram: h}
-			}
-			db.counters <- counterDelta{runID: p.runID, column: "history_line_count", delta: len(p.history)}
-		}
-		for _, e := range p.events {
-			db.events <- eventItem{runID: p.runID, lineNum: e.LineNum, data: string(e.Data)}
-		}
-		if len(p.events) > 0 {
-			db.counters <- counterDelta{runID: p.runID, column: "events_line_count", delta: len(p.events)}
-		}
-		for _, l := range p.logs {
-			db.logs <- logItem{runID: p.runID, lineNum: l.LineNum, line: l.Line}
-		}
-		if len(p.logs) > 0 {
-			db.counters <- counterDelta{runID: p.runID, column: "log_line_count", delta: len(p.logs)}
-		}
-	}
-	return nil
-}
 
 type scalarItem struct {
 	runID string
@@ -82,12 +37,15 @@ func (db *DB) processScalars(items []scalarItem) error {
 	for _, item := range items {
 		byRun[item.runID] = append(byRun[item.runID], item.parsedScalar)
 	}
+	total := 0
 	for runID, scalars := range byRun {
 		if err := db.flushScalars(runID, scalars); err != nil {
 			log.Printf("[flush] ERROR scalars run=%s: %v", runID[:8], err)
-		} else {
-			log.Printf("[flush] OK scalars run=%s count=%d", runID[:8], len(scalars))
 		}
+		total += len(scalars)
+	}
+	if total > 0 {
+		log.Printf("[flush] OK scalars runs=%d count=%d", len(byRun), total)
 	}
 	return nil
 }
@@ -97,12 +55,15 @@ func (db *DB) processHistograms(items []histogramItem) error {
 	for _, item := range items {
 		byRun[item.runID] = append(byRun[item.runID], item.parsedHistogram)
 	}
+	total := 0
 	for runID, histograms := range byRun {
 		if err := db.flushHistograms(runID, histograms); err != nil {
 			log.Printf("[flush] ERROR histograms run=%s: %v", runID[:8], err)
-		} else {
-			log.Printf("[flush] OK histograms run=%s count=%d", runID[:8], len(histograms))
 		}
+		total += len(histograms)
+	}
+	if total > 0 {
+		log.Printf("[flush] OK histograms runs=%d count=%d", len(byRun), total)
 	}
 	return nil
 }

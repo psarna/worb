@@ -7,20 +7,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 	"time"
 
 	_ "github.com/tursodatabase/libsql-client-go/libsql"
 	_ "modernc.org/sqlite"
 )
-
-const entityChanSize = 10_000_000
-const entityBatchSize = 50_000
-const counterChanSize = 100_000
-const counterBatchSize = 10_000
-const ingestChanSize = 10_000
-const ingestBatchSize = 100
-const flushEvery = 500 * time.Millisecond
 
 type flexTime struct {
 	time.Time
@@ -57,17 +48,11 @@ func (ft flexTime) Value() (driver.Value, error) {
 
 type DB struct {
 	*sql.DB
-	Engine     string
-	ingest     chan rawPayload
-	scalars    chan scalarItem
-	histograms chan histogramItem
-	events     chan eventItem
-	logs       chan logItem
-	counters   chan counterDelta
-	ctx        context.Context
-	cancel     context.CancelFunc
-	ingestWg   sync.WaitGroup
-	flushWg    sync.WaitGroup
+	Engine  string
+	wal     *WAL
+	dataDir string
+	ctx     context.Context
+	cancel  context.CancelFunc
 }
 
 func (db *DB) castJSON(col string) string {
@@ -117,73 +102,34 @@ func New(dataDir, engine string) (*DB, error) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	store := &DB{DB: db, Engine: engine, ctx: ctx, cancel: cancel}
+	store := &DB{DB: db, Engine: engine, dataDir: dataDir, ctx: ctx, cancel: cancel}
 	if err := store.migrate(); err != nil {
 		db.Close()
 		cancel()
 		return nil, fmt.Errorf("migrate: %w", err)
 	}
 
-	store.startConsumer()
+	wal, err := newWAL(dataDir)
+	if err != nil {
+		db.Close()
+		cancel()
+		return nil, fmt.Errorf("init wal: %w", err)
+	}
+	store.wal = wal
+	wal.startReader(store)
+
 	store.StartCleanup()
 
 	return store, nil
 }
 
-func (db *DB) startConsumer() {
-	db.ingest = make(chan rawPayload, ingestChanSize)
-	db.scalars = make(chan scalarItem, entityChanSize)
-	db.histograms = make(chan histogramItem, entityChanSize)
-	db.events = make(chan eventItem, entityChanSize)
-	db.logs = make(chan logItem, entityChanSize)
-	db.counters = make(chan counterDelta, counterChanSize)
-
-	startIngest := func(f func()) {
-		db.ingestWg.Add(1)
-		go func() {
-			defer db.ingestWg.Done()
-			f()
-		}()
-	}
-	startFlush := func(f func()) {
-		db.flushWg.Add(1)
-		go func() {
-			defer db.flushWg.Done()
-			f()
-		}()
-	}
-	startIngest(func() { consumeBatches(db.ctx, db.ingest, ingestBatchSize, flushEvery, db.processIngest) })
-	startFlush(func() { consumeBatches(db.ctx, db.scalars, entityBatchSize, flushEvery, db.processScalars) })
-	startFlush(func() {
-		consumeBatches(db.ctx, db.histograms, entityBatchSize, flushEvery, db.processHistograms)
-	})
-	startFlush(func() { consumeBatches(db.ctx, db.events, entityBatchSize, flushEvery, db.processEvents) })
-	startFlush(func() { consumeBatches(db.ctx, db.logs, entityBatchSize, flushEvery, db.processLogs) })
-	startFlush(func() {
-		consumeBatches(db.ctx, db.counters, counterBatchSize, flushEvery, db.processCounters)
-	})
-}
-
-// drainAll closes ingest first (waits for fan-out), then closes downstream channels.
-func (db *DB) drainAll() {
-	close(db.ingest)
-	db.ingestWg.Wait()
-	close(db.scalars)
-	close(db.histograms)
-	close(db.events)
-	close(db.logs)
-	close(db.counters)
-	db.flushWg.Wait()
-}
-
-// Flush synchronously drains pending writes. Used by tests.
 func (db *DB) Flush() {
-	db.drainAll()
-	db.startConsumer()
+	db.wal.flushSync()
 }
 
 func (db *DB) Close() error {
-	db.drainAll()
+	db.wal.flushSync()
+	db.wal.close()
 	db.cancel()
 	return db.DB.Close()
 }
@@ -340,7 +286,6 @@ func (db *DB) migrateSQLite() error {
 		}
 	}
 
-	// Additive migrations (ignore errors if columns already exist)
 	db.Exec("ALTER TABLE runs ADD COLUMN deleted_at TEXT")
 	db.Exec("ALTER TABLE projects ADD COLUMN deleted_at TEXT")
 
