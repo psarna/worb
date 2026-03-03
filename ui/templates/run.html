@@ -693,6 +693,7 @@ ORDER BY step LIMIT 20</textarea>
         const LAZY_DEBOUNCE_MS = 50;
         let allKeyNames = null;
         let fetchGeneration = 0;
+        let histogramsLoaded = false;
 
         async function flushLazyQueue() {
             lazyTimer = null;
@@ -735,6 +736,7 @@ ORDER BY step LIMIT 20</textarea>
                         pendingKeys.delete(key);
                     }
                     scheduleRender();
+                    checkVisibleKeysLoaded();
                     if (allKeyNames && loadedKeys.size >= allKeyNames.length) {
                         buildAndCacheFullData();
                     }
@@ -744,6 +746,20 @@ ORDER BY step LIMIT 20</textarea>
                     for (const key of chunk) pendingKeys.delete(key);
                 }
             }
+        }
+
+        function checkVisibleKeysLoaded() {
+            if (histogramsLoaded || !allKeyNames) return;
+            for (const cat of Object.keys(categoryElements)) {
+                if (collapsedCategories.has(cat)) continue;
+                const el = categoryElements[cat];
+                if (!el.renderedKeys) continue;
+                for (const key of el.renderedKeys) {
+                    if (!loadedKeys.has(key)) return;
+                }
+            }
+            histogramsLoaded = true;
+            loadHistograms();
         }
 
         function requestLazyLoad(key) {
@@ -762,7 +778,10 @@ ORDER BY step LIMIT 20</textarea>
             setCachedHistory(runID, runHistoryLineCount, fullText);
             loadingHistory = false;
             scheduleRender();
-            loadHistograms();
+            if (!histogramsLoaded) {
+                histogramsLoaded = true;
+                loadHistograms();
+            }
         }
 
         const chartObserver = new IntersectionObserver((entries) => {
@@ -1176,6 +1195,7 @@ ORDER BY step LIMIT 20</textarea>
                 console.log('worb: cache hit, skipping fetch', {cachedLines: cached.lineCount, expected: runHistoryLineCount});
                 loadingHistory = false;
                 scheduleRender();
+                histogramsLoaded = true;
                 loadHistograms();
                 return;
             }
