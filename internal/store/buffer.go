@@ -32,9 +32,26 @@ type counterDelta struct {
 	delta  int
 }
 
+func collectRunIDs[T any](items []T, getRunID func(T) string) []string {
+	seen := map[string]bool{}
+	var ids []string
+	for _, item := range items {
+		id := getRunID(item)
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
 func (db *DB) processScalars(items []scalarItem) error {
+	active := db.activeRunIDs(collectRunIDs(items, func(i scalarItem) string { return i.runID }))
 	byRun := map[string][]parsedScalar{}
 	for _, item := range items {
+		if !active[item.runID] {
+			continue
+		}
 		byRun[item.runID] = append(byRun[item.runID], item.parsedScalar)
 	}
 	total := 0
@@ -51,8 +68,12 @@ func (db *DB) processScalars(items []scalarItem) error {
 }
 
 func (db *DB) processHistograms(items []histogramItem) error {
+	active := db.activeRunIDs(collectRunIDs(items, func(i histogramItem) string { return i.runID }))
 	byRun := map[string][]parsedHistogram{}
 	for _, item := range items {
+		if !active[item.runID] {
+			continue
+		}
 		byRun[item.runID] = append(byRun[item.runID], item.parsedHistogram)
 	}
 	total := 0
@@ -69,8 +90,12 @@ func (db *DB) processHistograms(items []histogramItem) error {
 }
 
 func (db *DB) processEvents(items []eventItem) error {
+	active := db.activeRunIDs(collectRunIDs(items, func(i eventItem) string { return i.runID }))
 	byRun := map[string][]eventItem{}
 	for _, item := range items {
+		if !active[item.runID] {
+			continue
+		}
 		byRun[item.runID] = append(byRun[item.runID], item)
 	}
 	for runID, events := range byRun {
@@ -82,8 +107,12 @@ func (db *DB) processEvents(items []eventItem) error {
 }
 
 func (db *DB) processLogs(items []logItem) error {
+	active := db.activeRunIDs(collectRunIDs(items, func(i logItem) string { return i.runID }))
 	byRun := map[string][]logItem{}
 	for _, item := range items {
+		if !active[item.runID] {
+			continue
+		}
 		byRun[item.runID] = append(byRun[item.runID], item)
 	}
 	for runID, logs := range byRun {
@@ -95,12 +124,16 @@ func (db *DB) processLogs(items []logItem) error {
 }
 
 func (db *DB) processCounters(items []counterDelta) error {
+	active := db.activeRunIDs(collectRunIDs(items, func(i counterDelta) string { return i.runID }))
 	type key struct {
 		runID  string
 		column string
 	}
 	merged := map[key]int{}
 	for _, item := range items {
+		if !active[item.runID] {
+			continue
+		}
 		merged[key{item.runID, item.column}] += item.delta
 	}
 	for k, delta := range merged {

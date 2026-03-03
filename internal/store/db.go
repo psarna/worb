@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "github.com/tursodatabase/libsql-client-go/libsql"
@@ -296,4 +297,35 @@ func (db *DB) migrateSQLite() error {
 	) WITHOUT ROWID`)
 
 	return nil
+}
+
+// activeRunIDs returns the subset of ids that exist and are not deleted.
+func (db *DB) activeRunIDs(ids []string) map[string]bool {
+	if len(ids) == 0 {
+		return nil
+	}
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]interface{}, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	rows, err := db.Query("SELECT id FROM runs WHERE id IN ("+placeholders+") AND deleted_at IS NULL", args...)
+	if err != nil {
+		// On error, assume all are active to avoid dropping data
+		active := make(map[string]bool, len(ids))
+		for _, id := range ids {
+			active[id] = true
+		}
+		return active
+	}
+	defer rows.Close()
+	active := make(map[string]bool)
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			active[id] = true
+		}
+	}
+	return active
 }
