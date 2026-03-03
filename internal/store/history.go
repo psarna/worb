@@ -55,7 +55,7 @@ func parseHistoryRows(rows []struct {
 		}
 
 		var xStep *float64
-		if raw, ok := obj["_step"]; ok {
+		if raw, ok := obj["step"]; ok {
 			var v float64
 			if json.Unmarshal(raw, &v) == nil {
 				xStep = &v
