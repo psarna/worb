@@ -296,6 +296,8 @@ func (db *DB) migrateSQLite() error {
 		PRIMARY KEY (run_id, key)
 	) WITHOUT ROWID`)
 
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_history_scalars_run_step ON history_scalars(run_id, step)`)
+
 	return nil
 }
 
