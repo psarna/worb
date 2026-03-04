@@ -82,7 +82,7 @@ func (s *Server) setupRoutes() {
 	fsHandler := &filestream.Handler{Store: s.store}
 	r.Post("/files/{entity}/{project}/{run}/file_stream", fsHandler.ServeHTTP)
 
-	r.Put("/files/upload/{token}", s.files.Upload)
+	r.Put("/files/upload/{token}", s.handleFileUpload)
 	r.Get("/files/upload/{token}", s.files.Download)
 
 	r.Get("/api/v1/viewer", func(w http.ResponseWriter, r *http.Request) {
@@ -109,6 +109,7 @@ func (s *Server) setupRoutes() {
 		r.Get("/runs/{runID}/history/keys", s.apiGetHistoryKeys)
 		r.Get("/runs/{runID}/histograms", s.apiGetHistograms)
 		r.Get("/runs/{runID}/logs", s.apiGetLogs)
+		r.Get("/runs/{runID}/files", s.apiGetFiles)
 		r.Delete("/runs/{runID}", s.apiDeleteRun)
 		r.Delete("/projects/{projectID}", s.apiDeleteProject)
 		r.Post("/query", s.apiQuery)
@@ -374,6 +375,30 @@ func (s *Server) wandbRunRedirect(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/runs/"+run.ID, http.StatusFound)
+}
+
+func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request) {
+	s.files.Upload(w, r)
+	token := chi.URLParam(r, "token")
+	if token != "" {
+		if info, err := s.files.Stat(token); err == nil {
+			s.store.UpdateFileSize(token, info.Size())
+		}
+	}
+}
+
+func (s *Server) apiGetFiles(w http.ResponseWriter, r *http.Request) {
+	runID := chi.URLParam(r, "runID")
+	files, err := s.store.ListFiles(runID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if files == nil {
+		files = []*store.File{}
+	}
+	json.NewEncoder(w).Encode(files)
 }
 
 func (s *Server) apiGetLogs(w http.ResponseWriter, r *http.Request) {

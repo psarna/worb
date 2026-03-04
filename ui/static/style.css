@@ -172,6 +172,12 @@ h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
 
 .config-table th { color: var(--text-secondary); font-weight: 500; width: 200px; }
 
+.overview-section { margin-bottom: 24px; }
+.overview-heading { font-size: 14px; color: var(--text-secondary); font-weight: 500; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+.overview-notes { background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 12px 16px; font-size: 14px; white-space: pre-wrap; }
+.overview-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.overview-tag { background: rgba(88, 166, 255, 0.15); color: var(--accent); padding: 4px 12px; border-radius: 12px; font-size: 13px; }
+
 .chart-container {
     position: relative;
     background: var(--surface);

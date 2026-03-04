@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"html/template"
 	"net/http"
 
@@ -60,11 +61,37 @@ func (s *Server) uiRun(w http.ResponseWriter, r *http.Request) {
 		summaryJSON = template.JS(run.Summary)
 	}
 
+	tagsJSON := template.JS("[]")
+	if run.Tags != nil {
+		tagsJSON = template.JS(run.Tags)
+	}
+
+	notesBytes, _ := json.Marshal(run.Notes)
+
+	runMeta := map[string]string{
+		"state":          run.State,
+		"name":           run.Name,
+		"display_name":   run.DisplayName,
+		"host":           run.Host,
+		"program":        run.Program,
+		"git_commit":     run.GitCommit,
+		"group_name":     run.GroupName,
+		"job_type":       run.JobType,
+		"sweep_name":     run.SweepName,
+		"created_at":     run.CreatedAt.Format("Jan 2, 2006 3:04:05 PM"),
+		"created_at_iso": run.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		"updated_at_iso": run.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+	}
+	runMetaBytes, _ := json.Marshal(runMeta)
+
 	templates.ExecuteTemplate(w, "run.html", map[string]any{
 		"Run":         run,
 		"Project":     project,
 		"ConfigJSON":  configJSON,
 		"SummaryJSON": summaryJSON,
+		"TagsJSON":    tagsJSON,
+		"NotesJSON":   template.JS(notesBytes),
+		"RunMetaJSON": template.JS(runMetaBytes),
 		"DBEngine":    s.config.DBEngine,
 	})
 }

@@ -37,9 +37,11 @@
 
         <div class="tabs">
             <div class="tab active" data-tab="charts">Charts</div>
+            <div class="tab" data-tab="overview">Overview</div>
             <div class="tab" data-tab="config">Config</div>
             <div class="tab" data-tab="summary">Summary</div>
             <div class="tab" data-tab="logs">Logs</div>
+            <div class="tab" data-tab="files">Files</div>
             <div class="tab" data-tab="console">Console</div>
         </div>
 
@@ -90,6 +92,23 @@
             <div class="empty-state" id="no-charts" style="display:none;">No metrics logged yet.</div>
         </div>
 
+        <div id="overview" class="tab-content">
+            <div class="overview-section" id="overview-notes-section" style="display:none;">
+                <h3 class="overview-heading">Notes</h3>
+                <div class="overview-notes" id="overview-notes"></div>
+            </div>
+            <div class="overview-section" id="overview-tags-section" style="display:none;">
+                <h3 class="overview-heading">Tags</h3>
+                <div class="overview-tags" id="overview-tags"></div>
+            </div>
+            <div class="overview-section">
+                <h3 class="overview-heading">Run Info</h3>
+                <table class="config-table" id="overview-table">
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
         <div id="config" class="tab-content">
             <table class="config-table" id="config-table">
                 <tbody></tbody>
@@ -104,6 +123,10 @@
 
         <div id="logs" class="tab-content">
             <div class="logs-container" id="logs-container">Loading...</div>
+        </div>
+
+        <div id="files" class="tab-content">
+            <div id="files-list">Loading...</div>
         </div>
 
         <div id="console" class="tab-content">
@@ -229,14 +252,33 @@ ORDER BY step LIMIT 20</textarea>
             .catch(e => alert('Failed to delete run: ' + e.message));
     }
 
+    function switchTab(tabName, pushState) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+        const tabEl = document.querySelector(`.tab[data-tab="${tabName}"]`);
+        if (tabEl) tabEl.classList.add('active');
+        const content = document.getElementById(tabName);
+        if (content) content.classList.add('active');
+        if (pushState) {
+            const url = new URL(window.location);
+            url.hash = tabName;
+            history.pushState(null, '', url);
+        }
+    }
+
     document.querySelectorAll('.tab').forEach(tab => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-            tab.classList.add('active');
-            document.getElementById(tab.dataset.tab).classList.add('active');
-        });
+        tab.addEventListener('click', () => switchTab(tab.dataset.tab, true));
     });
+
+    window.addEventListener('popstate', () => {
+        const hash = window.location.hash.replace('#', '');
+        if (hash) switchTab(hash, false);
+        else switchTab('charts', false);
+    });
+
+    if (window.location.hash) {
+        switchTab(window.location.hash.replace('#', ''), false);
+    }
 
     const barLabelPlugin = {
         id: 'barLabel',
@@ -1298,6 +1340,92 @@ ORDER BY step LIMIT 20</textarea>
         renderTable('summary-table', summary);
     }
 
+    function loadOverview() {
+        const tags = {{.TagsJSON}};
+        const notes = {{.NotesJSON}};
+        const config = {{.ConfigJSON}};
+        const runMeta = {{.RunMetaJSON}};
+
+        if (notes) {
+            document.getElementById('overview-notes-section').style.display = '';
+            document.getElementById('overview-notes').textContent = notes;
+        }
+
+        if (tags && tags.length > 0) {
+            document.getElementById('overview-tags-section').style.display = '';
+            const container = document.getElementById('overview-tags');
+            tags.forEach(tag => {
+                const span = document.createElement('span');
+                span.className = 'overview-tag';
+                span.textContent = tag;
+                container.appendChild(span);
+            });
+        }
+
+        const info = {};
+        info['State'] = runMeta.state;
+        info['Start time'] = runMeta.created_at;
+        const created = new Date(runMeta.created_at_iso);
+        const updated = new Date(runMeta.updated_at_iso);
+        const runtimeSec = Math.round((updated - created) / 1000);
+        if (runtimeSec > 0) {
+            if (runtimeSec < 60) info['Runtime'] = runtimeSec + 's';
+            else if (runtimeSec < 3600) info['Runtime'] = Math.floor(runtimeSec / 60) + 'm ' + (runtimeSec % 60) + 's';
+            else info['Runtime'] = Math.floor(runtimeSec / 3600) + 'h ' + Math.floor((runtimeSec % 3600) / 60) + 'm';
+        }
+        info['Run name'] = runMeta.name;
+        if (runMeta.display_name) info['Display name'] = runMeta.display_name;
+        if (runMeta.host) info['Hostname'] = runMeta.host;
+        if (runMeta.program) info['Program'] = runMeta.program;
+        if (runMeta.git_commit) info['Git commit'] = runMeta.git_commit;
+        if (runMeta.group_name) info['Group'] = runMeta.group_name;
+        if (runMeta.job_type) info['Job type'] = runMeta.job_type;
+        if (runMeta.sweep_name) info['Sweep'] = runMeta.sweep_name;
+
+        if (config && config._wandb && config._wandb.value) {
+            const wb = config._wandb.value;
+            if (wb.python_version) info['Python version'] = wb.python_version;
+            if (wb.cli_version) info['W&B CLI version'] = wb.cli_version;
+            if (wb.os) info['OS'] = wb.os;
+        }
+
+        renderTable('overview-table', info);
+    }
+
+    async function loadFiles() {
+        const resp = await fetch(`/api/runs/${runID}/files`);
+        const files = await resp.json();
+        const container = document.getElementById('files-list');
+        if (!files || files.length === 0) {
+            container.textContent = 'No files.';
+            return;
+        }
+        const table = document.createElement('table');
+        table.className = 'config-table';
+        const thead = document.createElement('thead');
+        thead.innerHTML = '<tr><th>Name</th><th>Size</th><th>Created</th></tr>';
+        table.appendChild(thead);
+        const tbody = document.createElement('tbody');
+        files.forEach(f => {
+            const tr = document.createElement('tr');
+            const sizeStr = f.size > 0 ? formatSize(f.size) : '-';
+            const dateStr = f.created_at ? new Date(f.created_at).toLocaleString() : '';
+            const downloadURL = f.url || '#';
+            tr.innerHTML = `<td><a href="${downloadURL}" style="color: var(--accent);" download>${f.name}</a></td><td>${sizeStr}</td><td>${dateStr}</td>`;
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        container.innerHTML = '';
+        container.appendChild(table);
+    }
+
+    function formatSize(bytes) {
+        if (bytes < 1024) return bytes + ' B';
+        if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+        if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+    }
+
     async function loadLogs() {
         const resp = await fetch(`/api/runs/${runID}/logs`);
         const logs = await resp.json();
@@ -1722,9 +1850,11 @@ ORDER BY step LIMIT 20</textarea>
     });
 
     loadCharts();
+    loadOverview();
     loadConfig();
     loadSummary();
     loadLogs();
+    loadFiles();
     </script>
 </body>
 </html>

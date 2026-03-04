@@ -51,4 +51,16 @@ for step in range(num_steps):
 
     run.log(metrics)
 
+import tempfile, json
+
+with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+    json.dump(run.config.as_dict(), f, indent=2)
+    config_path = f.name
+run.save(config_path, base_path=os.path.dirname(config_path))
+
+with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
+    f.write("torch==2.2.0\nwandb==0.24.1\nnumpy==1.26.4\n")
+    reqs_path = f.name
+run.save(reqs_path, base_path=os.path.dirname(reqs_path))
+
 run.finish()

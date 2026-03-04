@@ -44,6 +44,10 @@ func (s *Store) Upload(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (s *Store) Stat(token string) (os.FileInfo, error) {
+	return os.Stat(filepath.Join(s.Dir, token))
+}
+
 func (s *Store) Download(w http.ResponseWriter, r *http.Request) {
 	token := chi.URLParam(r, "token")
 	if token == "" {

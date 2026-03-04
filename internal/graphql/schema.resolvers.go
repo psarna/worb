@@ -281,6 +281,7 @@ func (r *mutationResolver) CreateRunFiles(ctx context.Context, input CreateRunFi
 			UploadURL:     &uploadURL,
 			UploadHeaders: []string{},
 		})
+		r.Store.InsertFile(fileID, run.ID, fname, uploadURL)
 	}
 
 	return &CreateRunFilesPayload{

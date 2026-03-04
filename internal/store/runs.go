@@ -428,6 +428,44 @@ func (db *DB) GetProject(id string) (*Project, error) {
 	return p, nil
 }
 
+type File struct {
+	ID        string    `json:"id"`
+	RunID     string    `json:"run_id"`
+	Name      string    `json:"name"`
+	URL       string    `json:"url"`
+	Size      int64     `json:"size"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (db *DB) InsertFile(id, runID, name, url string) error {
+	_, err := db.Exec("INSERT OR IGNORE INTO files (id, run_id, name, url) VALUES (?, ?, ?, ?)", id, runID, name, url)
+	return err
+}
+
+func (db *DB) UpdateFileSize(fileID string, size int64) {
+	db.Exec("UPDATE files SET size = ? WHERE id = ?", size, fileID)
+}
+
+func (db *DB) ListFiles(runID string) ([]*File, error) {
+	rows, err := db.Query("SELECT id, run_id, name, COALESCE(url, ''), COALESCE(size, 0), created_at FROM files WHERE run_id = ? ORDER BY name", runID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var files []*File
+	for rows.Next() {
+		f := &File{}
+		var ca flexTime
+		if err := rows.Scan(&f.ID, &f.RunID, &f.Name, &f.URL, &f.Size, &ca); err != nil {
+			return nil, err
+		}
+		f.CreatedAt = ca.Time
+		files = append(files, f)
+	}
+	return files, nil
+}
+
 func (db *DB) GetProjectByName(entity, name string) (*Project, error) {
 	p := &Project{}
 	var ca flexTime
