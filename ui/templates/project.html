@@ -899,6 +899,9 @@
 
         everyChart.add(chart);
 
+        if (chartSettings.xMin !== '' || chartSettings.xMax !== '') {
+            resetBtn.style.display = 'inline-block';
+        }
         resetBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             resetAllZoom();

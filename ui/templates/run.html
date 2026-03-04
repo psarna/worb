@@ -905,6 +905,9 @@ ORDER BY step LIMIT 20</textarea>
             })();
             const chart = new Chart(div.querySelector('canvas'), chartConfig);
             everyChart.add(chart);
+            if (chartSettings.xMin !== '' || chartSettings.xMax !== '') {
+                resetBtn.style.display = 'inline-block';
+            }
             resetBtn.addEventListener('click', (e) => { e.stopPropagation(); resetAllZoom(); });
             if (!singleValue) {
                 const canvas = div.querySelector('canvas');
