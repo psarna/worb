@@ -695,11 +695,6 @@ ORDER BY step LIMIT 20</textarea>
         let renderPending = false;
 
         function dedupeSorted(points) {
-            const allSameStep = points.length > 1 && points.every(p => p.step === points[0].step);
-            if (allSameStep && showHistory) {
-                const sorted = [...points].sort((a, b) => a.index - b.index);
-                return sorted.map((p, i) => ({ step: i, value: p.value }));
-            }
             const byStep = new Map();
             for (const p of points) byStep.set(p.step, p);
             return Array.from(byStep.values()).sort((a, b) => a.step - b.step);
@@ -1157,16 +1152,6 @@ ORDER BY step LIMIT 20</textarea>
                 catEl.renderedKeys = displayKeys;
             }
 
-            if (!hasCollapsible) {
-                for (const key of sortedKeys) {
-                    const pts = metrics[key];
-                    if (pts && pts.length > 1 && pts.every(p => p.step === pts[0].step)) {
-                        hasCollapsible = true;
-                        document.getElementById('history-toggle-btn').style.display = '';
-                        break;
-                    }
-                }
-            }
         }
 
         function scheduleRender() {

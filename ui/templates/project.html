@@ -711,9 +711,19 @@
         });
     }
 
+    function dedupByStep(points) {
+        const byStep = new Map();
+        for (const p of points) byStep.set(p.step, p);
+        return Array.from(byStep.values()).sort((a, b) => a.step - b.step);
+    }
+
     function createChart(div, key, runDatasets, runOrder, runColors) {
         const resetBtn = div.querySelector('.zoom-reset-btn');
         const multiRun = runOrder.length > 1;
+
+        for (const rid of runOrder) {
+            if (runDatasets[rid]) runDatasets[rid] = dedupByStep(runDatasets[rid]);
+        }
 
         const singleValue = runOrder.every(id => (runDatasets[id] || []).length <= 1);
 
@@ -1286,7 +1296,7 @@
                         const useSm = chartSettings.smoothing !== 'none' && chartSettings.smoothParam > 0;
                         const dsArr = [];
                         runOrder.filter(rid => runDatasets[rid]?.length).forEach((runID, idx) => {
-                            const points = runDatasets[runID];
+                            const points = dedupByStep(runDatasets[runID]);
                             const color = runColors[runID];
                             const hasBands = points.length > 0 && points[0].min != null;
                             const hidden = hiddenRuns.has(runID);
