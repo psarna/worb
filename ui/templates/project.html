@@ -1291,6 +1291,18 @@
                     const runDatasets = metrics[key];
                     if (allCharts[key]) {
                         const chart = allCharts[key];
+                        if (chart.config.type === 'bar') {
+                            everyChart.delete(chart);
+                            chart.destroy();
+                            delete allCharts[key];
+                            const div = document.getElementById('cc-' + key.replace(/[^a-zA-Z0-9]/g, '_'));
+                            if (div) {
+                                div.querySelector('canvas')?.remove();
+                                const c = document.createElement('canvas');
+                                div.appendChild(c);
+                                allCharts[key] = createChart(div, key, runDatasets, runOrder.filter(rid => runDatasets[rid]?.length), runColors);
+                            }
+                        } else {
                         const allSteps = new Set();
                         const multiRun = runOrder.length > 1;
                         const useSm = chartSettings.smoothing !== 'none' && chartSettings.smoothParam > 0;
@@ -1350,6 +1362,7 @@
                             delete xScale.suggestedMax;
                         }
                         chart.update(loadingHistory ? 'none' : undefined);
+                        }
                     } else {
                         const divId = 'cc-' + key.replace(/[^a-zA-Z0-9]/g, '_');
                         let div = document.getElementById(divId);
