@@ -381,6 +381,40 @@ h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
     gap: 0;
 }
 
+.runs-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.runs-filter-count {
+    color: var(--text-secondary);
+    font-size: 13px;
+    white-space: nowrap;
+}
+
+.runs-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-top: 12px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.runs-page-controls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.pagination-btn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;
@@ -395,6 +429,18 @@ table th, table td {
 
 table th { color: var(--text-secondary); font-weight: 500; }
 table tr:hover { background: rgba(255,255,255,0.02); }
+
+@media (max-width: 760px) {
+    .runs-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .runs-pagination {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+}
 
 .console-container {
     display: flex;

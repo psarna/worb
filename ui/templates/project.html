@@ -85,7 +85,11 @@
 
         <div id="runs" class="tab-content active">
         {{if .Runs}}
-        <table>
+        <div class="runs-toolbar">
+            <input type="text" class="chart-search" id="run-search" placeholder="Filter runs...">
+            <div class="runs-filter-count" id="runs-filter-count">{{len .Runs}} runs</div>
+        </div>
+        <table id="runs-table">
             <thead>
                 <tr>
                     <th>Name</th>
@@ -95,9 +99,9 @@
                     <th></th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="runs-table-body">
                 {{range .Runs}}
-                <tr onclick="location.href='/runs/{{.ID}}'" style="cursor: pointer;">
+                <tr onclick="location.href='/runs/{{.ID}}'" style="cursor: pointer;" data-run-id="{{.ID}}" data-run-filter="{{if .DisplayName}}{{.DisplayName}} {{end}}{{.Name}} {{.ID}} {{.State}}">
                     <td>
                         <a href="/runs/{{.ID}}">{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Name}}{{end}}</a>
                     </td>
@@ -109,6 +113,14 @@
                 {{end}}
             </tbody>
         </table>
+        <div class="runs-pagination" id="runs-pagination">
+            <span id="runs-page-info"></span>
+            <div class="runs-page-controls">
+                <button type="button" class="expand-collapse-btn pagination-btn" id="runs-prev">Previous</button>
+                <button type="button" class="expand-collapse-btn pagination-btn" id="runs-next">Next</button>
+            </div>
+        </div>
+        <div class="empty-state" id="runs-filter-empty" style="display:none;">No runs match this filter.</div>
         {{else}}
         <div class="empty-state">No runs yet.</div>
         {{end}}
@@ -121,7 +133,7 @@
     function deleteRun(runID, btn) {
         if (!confirm('Delete this run and all its data? This cannot be undone.')) return;
         fetch(`/api/runs/${runID}`, { method: 'DELETE' })
-            .then(r => { if (r.ok) { const tr = btn.closest('tr'); if (tr) tr.remove(); } else return r.text().then(t => { throw new Error(t); }); })
+            .then(r => { if (r.ok) { const tr = btn.closest('tr'); if (tr) tr.remove(); document.dispatchEvent(new CustomEvent('runs:changed')); } else return r.text().then(t => { throw new Error(t); }); })
             .catch(e => alert('Failed to delete run: ' + e.message));
     }
 
@@ -312,6 +324,84 @@
             history.replaceState(null, '', '#' + tabName);
         });
     });
+
+    function initRunsList() {
+        const table = document.getElementById('runs-table');
+        if (!table) return;
+        const tbody = document.getElementById('runs-table-body');
+        const searchInput = document.getElementById('run-search');
+        const countEl = document.getElementById('runs-filter-count');
+        const pageInfo = document.getElementById('runs-page-info');
+        const prevBtn = document.getElementById('runs-prev');
+        const nextBtn = document.getElementById('runs-next');
+        const pagination = document.getElementById('runs-pagination');
+        const empty = document.getElementById('runs-filter-empty');
+        const PAGE_SIZE = 25;
+        let currentPage = 1;
+        let filter = '';
+        let allRows = [];
+
+        function collectRows() {
+            allRows = Array.from(tbody.querySelectorAll('tr[data-run-id]'));
+            for (const row of allRows) {
+                row.dataset.filterLower = (row.dataset.runFilter || '').toLowerCase();
+            }
+        }
+
+        function filteredRows() {
+            if (!filter) return allRows;
+            return allRows.filter(row => row.dataset.filterLower.includes(filter));
+        }
+
+        function render() {
+            const rows = filteredRows();
+            const total = rows.length;
+            const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
+            if (currentPage > pageCount) currentPage = pageCount;
+            const start = (currentPage - 1) * PAGE_SIZE;
+            const end = Math.min(start + PAGE_SIZE, total);
+
+            for (const row of allRows) row.style.display = 'none';
+            for (const row of rows.slice(start, end)) row.style.display = '';
+
+            table.style.display = total === 0 ? 'none' : 'table';
+            empty.style.display = total === 0 ? '' : 'none';
+            pagination.style.display = total > 0 ? 'flex' : 'none';
+            prevBtn.disabled = total === 0 || currentPage <= 1;
+            nextBtn.disabled = total === 0 || currentPage >= pageCount;
+
+            if (total === 0) {
+                pageInfo.textContent = '0 runs';
+            } else {
+                pageInfo.textContent = `${start + 1}-${end} of ${total} (Page ${currentPage}/${pageCount})`;
+            }
+            countEl.textContent = `${total} run${total === 1 ? '' : 's'}`;
+        }
+
+        searchInput.addEventListener('input', (e) => {
+            filter = e.target.value.trim().toLowerCase();
+            currentPage = 1;
+            render();
+        });
+        prevBtn.addEventListener('click', () => {
+            if (currentPage > 1) {
+                currentPage--;
+                render();
+            }
+        });
+        nextBtn.addEventListener('click', () => {
+            currentPage++;
+            render();
+        });
+
+        document.addEventListener('runs:changed', () => {
+            collectRows();
+            render();
+        });
+
+        collectRows();
+        render();
+    }
 
     if (location.hash) {
         const tab = location.hash.slice(1);
@@ -1555,6 +1645,7 @@
         reapplySettings();
     });
 
+    initRunsList();
     loadCharts();
     </script>
 </body>
