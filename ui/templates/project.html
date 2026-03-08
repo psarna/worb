@@ -89,6 +89,14 @@
             <input type="text" class="chart-search" id="run-search" placeholder="Filter runs...">
             <div class="runs-filter-count" id="runs-filter-count">{{len .Runs}} runs</div>
         </div>
+        <div class="runs-pagination" id="runs-pagination-top" style="display:none;">
+            <span id="runs-page-info-top"></span>
+            <div class="runs-page-controls">
+                <button type="button" class="expand-collapse-btn pagination-btn" id="runs-prev-top">Previous</button>
+                <div class="runs-page-links" id="runs-page-links-top"></div>
+                <button type="button" class="expand-collapse-btn pagination-btn" id="runs-next-top">Next</button>
+            </div>
+        </div>
         <table id="runs-table">
             <thead>
                 <tr>
@@ -99,7 +107,7 @@
                     <th></th>
                 </tr>
             </thead>
-            <tbody id="runs-table-body">
+            <tbody id="runs-table-body" data-pending-pagination="1">
                 {{range .Runs}}
                 <tr onclick="location.href='/runs/{{.ID}}'" style="cursor: pointer;" data-run-id="{{.ID}}" data-run-filter="{{if .DisplayName}}{{.DisplayName}} {{end}}{{.Name}} {{.ID}} {{.State}}">
                     <td>
@@ -113,11 +121,12 @@
                 {{end}}
             </tbody>
         </table>
-        <div class="runs-pagination" id="runs-pagination">
-            <span id="runs-page-info"></span>
+        <div class="runs-pagination" id="runs-pagination-bottom" style="display:none;">
+            <span id="runs-page-info-bottom"></span>
             <div class="runs-page-controls">
-                <button type="button" class="expand-collapse-btn pagination-btn" id="runs-prev">Previous</button>
-                <button type="button" class="expand-collapse-btn pagination-btn" id="runs-next">Next</button>
+                <button type="button" class="expand-collapse-btn pagination-btn" id="runs-prev-bottom">Previous</button>
+                <div class="runs-page-links" id="runs-page-links-bottom"></div>
+                <button type="button" class="expand-collapse-btn pagination-btn" id="runs-next-bottom">Next</button>
             </div>
         </div>
         <div class="empty-state" id="runs-filter-empty" style="display:none;">No runs match this filter.</div>
@@ -331,12 +340,24 @@
         const tbody = document.getElementById('runs-table-body');
         const searchInput = document.getElementById('run-search');
         const countEl = document.getElementById('runs-filter-count');
-        const pageInfo = document.getElementById('runs-page-info');
-        const prevBtn = document.getElementById('runs-prev');
-        const nextBtn = document.getElementById('runs-next');
-        const pagination = document.getElementById('runs-pagination');
+        const pagers = [
+            {
+                container: document.getElementById('runs-pagination-top'),
+                pageInfo: document.getElementById('runs-page-info-top'),
+                prevBtn: document.getElementById('runs-prev-top'),
+                nextBtn: document.getElementById('runs-next-top'),
+                links: document.getElementById('runs-page-links-top'),
+            },
+            {
+                container: document.getElementById('runs-pagination-bottom'),
+                pageInfo: document.getElementById('runs-page-info-bottom'),
+                prevBtn: document.getElementById('runs-prev-bottom'),
+                nextBtn: document.getElementById('runs-next-bottom'),
+                links: document.getElementById('runs-page-links-bottom'),
+            },
+        ];
         const empty = document.getElementById('runs-filter-empty');
-        const PAGE_SIZE = 25;
+        const PAGE_SIZE = 16;
         let currentPage = 1;
         let filter = '';
         let allRows = [];
@@ -353,6 +374,53 @@
             return allRows.filter(row => row.dataset.filterLower.includes(filter));
         }
 
+        function pageTokens(pageCount, page) {
+            const selected = new Set([1, pageCount]);
+            for (let p = page - 2; p <= page + 2; p++) {
+                if (p >= 1 && p <= pageCount) selected.add(p);
+            }
+            const pages = Array.from(selected).sort((a, b) => a - b);
+            const tokens = [];
+            let prev = 0;
+            for (const p of pages) {
+                if (prev && p > prev + 1) tokens.push('...');
+                tokens.push(p);
+                prev = p;
+            }
+            return tokens;
+        }
+
+        function renderPager(pager, total, start, end, pageCount) {
+            pager.container.style.display = total > 0 ? 'flex' : 'none';
+            pager.prevBtn.disabled = total === 0 || currentPage <= 1;
+            pager.nextBtn.disabled = total === 0 || currentPage >= pageCount;
+            if (total === 0) {
+                pager.pageInfo.textContent = '0 runs';
+            } else {
+                pager.pageInfo.textContent = `${start + 1}-${end} of ${total} (Page ${currentPage}/${pageCount})`;
+            }
+            pager.links.innerHTML = '';
+            if (total === 0) return;
+            const frag = document.createDocumentFragment();
+            for (const token of pageTokens(pageCount, currentPage)) {
+                if (token === '...') {
+                    const span = document.createElement('span');
+                    span.className = 'runs-page-ellipsis';
+                    span.textContent = '...';
+                    frag.appendChild(span);
+                } else {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = `expand-collapse-btn pagination-btn pagination-page-btn${token === currentPage ? ' active' : ''}`;
+                    btn.textContent = String(token);
+                    btn.dataset.page = String(token);
+                    btn.disabled = token === currentPage;
+                    frag.appendChild(btn);
+                }
+            }
+            pager.links.appendChild(frag);
+        }
+
         function render() {
             const rows = filteredRows();
             const total = rows.length;
@@ -361,20 +429,13 @@
             const start = (currentPage - 1) * PAGE_SIZE;
             const end = Math.min(start + PAGE_SIZE, total);
 
+            tbody.removeAttribute('data-pending-pagination');
             for (const row of allRows) row.style.display = 'none';
             for (const row of rows.slice(start, end)) row.style.display = '';
 
             table.style.display = total === 0 ? 'none' : 'table';
             empty.style.display = total === 0 ? '' : 'none';
-            pagination.style.display = total > 0 ? 'flex' : 'none';
-            prevBtn.disabled = total === 0 || currentPage <= 1;
-            nextBtn.disabled = total === 0 || currentPage >= pageCount;
-
-            if (total === 0) {
-                pageInfo.textContent = '0 runs';
-            } else {
-                pageInfo.textContent = `${start + 1}-${end} of ${total} (Page ${currentPage}/${pageCount})`;
-            }
+            for (const pager of pagers) renderPager(pager, total, start, end, pageCount);
             countEl.textContent = `${total} run${total === 1 ? '' : 's'}`;
         }
 
@@ -383,16 +444,26 @@
             currentPage = 1;
             render();
         });
-        prevBtn.addEventListener('click', () => {
-            if (currentPage > 1) {
-                currentPage--;
+        for (const pager of pagers) {
+            pager.prevBtn.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage--;
+                    render();
+                }
+            });
+            pager.nextBtn.addEventListener('click', () => {
+                currentPage++;
                 render();
-            }
-        });
-        nextBtn.addEventListener('click', () => {
-            currentPage++;
-            render();
-        });
+            });
+            pager.links.addEventListener('click', (e) => {
+                const btn = e.target.closest('button[data-page]');
+                if (!btn) return;
+                const page = parseInt(btn.dataset.page, 10);
+                if (!Number.isFinite(page)) return;
+                currentPage = page;
+                render();
+            });
+        }
 
         document.addEventListener('runs:changed', () => {
             collectRows();

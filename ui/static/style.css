@@ -410,9 +410,35 @@ h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
     gap: 8px;
 }
 
+.runs-page-links {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.runs-page-ellipsis {
+    padding: 0 2px;
+    color: var(--text-secondary);
+}
+
+.pagination-page-btn {
+    min-width: 34px;
+    padding: 6px 10px;
+}
+
+.pagination-page-btn.active {
+    border-color: #58a6ff;
+    color: #58a6ff;
+    cursor: default;
+}
+
 .pagination-btn:disabled {
     opacity: 0.5;
     cursor: default;
+}
+
+#runs-table-body[data-pending-pagination="1"] tr[data-run-id] {
+    display: none;
 }
 
 table {
