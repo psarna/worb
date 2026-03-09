@@ -3,3 +3,4 @@ worb
 wandb/
 *.duckdb
 *.duckdb.wal
+scripts/__pycache__/

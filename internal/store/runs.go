@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/google/uuid"
@@ -192,7 +193,10 @@ func (db *DB) FinishRun(id string) error {
 }
 
 func (db *DB) IncrReceivedHistoryCount(id string, delta int) {
-	db.Exec("UPDATE runs SET received_history_count = received_history_count + ? WHERE id = ?", delta, id)
+	_, err := db.Exec("UPDATE runs SET received_history_count = received_history_count + ? WHERE id = ?", delta, id)
+	if err != nil {
+		log.Printf("[store] IncrReceivedHistoryCount(%s, %d): %v", id, delta, err)
+	}
 }
 
 func (db *DB) GetRun(id string) (*Run, error) {
