@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     port: int = 9090
     host: str = "0.0.0.0"
 
-    model_config = SettingsConfigDict(env_prefix="MIGRATE_", env_file=".env")
+    model_config = SettingsConfigDict(env_prefix="MIGRATE_")
 
 
 settings = Settings()
