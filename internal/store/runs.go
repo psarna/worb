@@ -18,29 +18,29 @@ type Project struct {
 }
 
 type Run struct {
-	ID               string
-	ProjectID        string
-	Name             string
-	DisplayName      string
-	Config           json.RawMessage
-	Summary          json.RawMessage
-	State            string
-	Host             string
-	Program          string
-	GitCommit        string
-	Tags             json.RawMessage
-	Notes            string
-	GroupName        string
-	JobType          string
-	SweepName        string
-	HistoryLineCount      int
-	EventsLineCount       int
-	LogLineCount          int
-	ReceivedHistoryCount  int
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	HeartbeatAt      time.Time
-	Project          *Project
+	ID                   string
+	ProjectID            string
+	Name                 string
+	DisplayName          string
+	Config               json.RawMessage
+	Summary              json.RawMessage
+	State                string
+	Host                 string
+	Program              string
+	GitCommit            string
+	Tags                 json.RawMessage
+	Notes                string
+	GroupName            string
+	JobType              string
+	SweepName            string
+	HistoryLineCount     int
+	EventsLineCount      int
+	LogLineCount         int
+	ReceivedHistoryCount int
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
+	HeartbeatAt          time.Time
+	Project              *Project
 }
 
 func (db *DB) EnsureProject(entity, name string) (*Project, error) {

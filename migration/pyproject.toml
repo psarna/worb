@@ -1,0 +1,12 @@
+[project]
+name = "worb-migration"
+version = "0.1.0"
+description = "Migration tools for worb"
+requires-python = ">=3.10"
+dependencies = [
+    "wandb>=0.19",
+    "requests>=2.31",
+    "fastapi>=0.115",
+    "uvicorn>=0.34",
+    "pydantic-settings>=2.0",
+]

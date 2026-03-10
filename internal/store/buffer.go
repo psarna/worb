@@ -123,21 +123,40 @@ func (db *DB) processLogs(items []logItem) error {
 	return nil
 }
 
+// counterQueries maps counter columns to queries that return the actual count.
+// Using absolute counts instead of additive deltas makes re-migration idempotent.
+var counterQueries = map[string]string{
+	"history_line_count": "SELECT COUNT(DISTINCT step) FROM history_scalars WHERE run_id = ?",
+	"events_line_count":  "SELECT COUNT(*) FROM system_events WHERE run_id = ?",
+	"log_line_count":     "SELECT COUNT(*) FROM console_logs WHERE run_id = ?",
+}
+
 func (db *DB) processCounters(items []counterDelta) error {
 	active := db.activeRunIDs(collectRunIDs(items, func(i counterDelta) string { return i.runID }))
+	// Collect unique (runID, column) pairs that need updating.
 	type key struct {
 		runID  string
 		column string
 	}
-	merged := map[key]int{}
+	seen := map[key]bool{}
 	for _, item := range items {
 		if !active[item.runID] {
 			continue
 		}
-		merged[key{item.runID, item.column}] += item.delta
+		seen[key{item.runID, item.column}] = true
 	}
-	for k, delta := range merged {
-		if _, err := db.Exec("UPDATE runs SET "+k.column+" = "+k.column+" + ?, updated_at = current_timestamp WHERE id = ?", delta, k.runID); err != nil {
+	for k := range seen {
+		query, ok := counterQueries[k.column]
+		if !ok {
+			log.Printf("[flush] WARN unknown counter column %q", k.column)
+			continue
+		}
+		var count int
+		if err := db.QueryRow(query, k.runID).Scan(&count); err != nil {
+			log.Printf("[flush] ERROR count %s run=%s: %v", k.column, k.runID[:8], err)
+			continue
+		}
+		if _, err := db.Exec("UPDATE runs SET "+k.column+" = ?, updated_at = current_timestamp WHERE id = ?", count, k.runID); err != nil {
 			log.Printf("[flush] ERROR %s run=%s: %v", k.column, k.runID[:8], err)
 		}
 	}

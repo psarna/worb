@@ -16,31 +16,31 @@ import (
 )
 
 const (
-	walMaxSize     = 32 << 30
-	walSoftSize    = 28 << 30
-	walBatchItems  = 50_000
-	walFlushEvery  = 500 * time.Millisecond
-	walPollSleep   = 50 * time.Millisecond
-	walCompactMin  = 1 << 30
-	walFsyncEvery  = time.Second
+	walMaxSize      = 32 << 30
+	walSoftSize     = 28 << 30
+	walBatchItems   = 50_000
+	walFlushEvery   = 500 * time.Millisecond
+	walPollSleep    = 50 * time.Millisecond
+	walCompactMin   = 1 << 30
+	walFsyncEvery   = time.Second
 	walPosSaveEvery = 5 * time.Second
 )
 
 type walEntry struct {
-	RunID   string           `json:"run_id"`
-	History []walHistoryRow  `json:"history,omitempty"`
-	Events  []walEventRow    `json:"events,omitempty"`
-	Logs    []walLogRow      `json:"logs,omitempty"`
+	RunID   string          `json:"run_id"`
+	History []walHistoryRow `json:"history,omitempty"`
+	Events  []walEventRow   `json:"events,omitempty"`
+	Logs    []walLogRow     `json:"logs,omitempty"`
 }
 
 type walHistoryRow struct {
-	Step int              `json:"step"`
-	Data json.RawMessage  `json:"data"`
+	Step int             `json:"step"`
+	Data json.RawMessage `json:"data"`
 }
 
 type walEventRow struct {
-	LineNum int              `json:"line_num"`
-	Data    json.RawMessage  `json:"data"`
+	LineNum int             `json:"line_num"`
+	Data    json.RawMessage `json:"data"`
 }
 
 type walLogRow struct {
@@ -48,14 +48,30 @@ type walLogRow struct {
 	Line    string `json:"line"`
 }
 
+type WALStats struct {
+	Size     int64 `json:"size_bytes"`
+	Position int64 `json:"position_bytes"`
+	Lag      int64 `json:"lag_bytes"`
+}
+
+func (w *WAL) Stats() WALStats {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	lag := w.size - w.pos
+	if lag < 0 {
+		lag = 0
+	}
+	return WALStats{Size: w.size, Position: w.pos, Lag: lag}
+}
+
 type WAL struct {
-	file    *os.File
-	mu      sync.Mutex
-	size    int64
-	maxSize int64
+	file     *os.File
+	mu       sync.Mutex
+	size     int64
+	maxSize  int64
 	softSize int64
-	pos     int64
-	dataDir string
+	pos      int64
+	dataDir  string
 
 	flushNow  chan chan struct{}
 	done      chan struct{}
@@ -161,13 +177,13 @@ func (w *WAL) readerLoop(db *DB) {
 	}
 
 	var (
-		scalars    []scalarItem
-		histograms []histogramItem
-		events     []eventItem
-		logs       []logItem
-		counters   []counterDelta
-		itemCount  int
-		lastFlush  = time.Now()
+		scalars     []scalarItem
+		histograms  []histogramItem
+		events      []eventItem
+		logs        []logItem
+		counters    []counterDelta
+		itemCount   int
+		lastFlush   = time.Now()
 		lastPosSave = time.Now()
 		lastCompact = time.Now()
 	)

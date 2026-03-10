@@ -79,7 +79,7 @@ func New(dataDir, engine string) (*DB, error) {
 	switch engine {
 	case "sqlite":
 		dbPath := filepath.Join(dataDir, "worb.db")
-		db, err = sql.Open("sqlite", dbPath+"?_pragma=journal_mode(wal)&_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)")
+		db, err = sql.Open("sqlite", dbPath+"?_pragma=journal_mode(wal)&_pragma=foreign_keys(1)&_pragma=busy_timeout(10000)")
 		if err != nil {
 			return nil, fmt.Errorf("open sqlite: %w", err)
 		}
@@ -123,6 +123,8 @@ func New(dataDir, engine string) (*DB, error) {
 
 	return store, nil
 }
+
+func (db *DB) WalStats() WALStats { return db.wal.Stats() }
 
 func (db *DB) Flush() {
 	db.wal.flushSync()

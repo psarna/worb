@@ -88,7 +88,7 @@ func parseHistoryRows(rows []struct {
 
 const (
 	multiRowSize = 100
-	txChunkSize  = 100000 // max rows per transaction — keeps lock hold ~2s, within busy_timeout(5000)
+	txChunkSize  = 100000 // max rows per transaction
 )
 
 func (db *DB) flushScalars(runID string, scalars []parsedScalar) error {
@@ -129,6 +129,7 @@ func (db *DB) flushScalars(runID string, scalars []parsedScalar) error {
 		if err := tx.Commit(); err != nil {
 			return fmt.Errorf("commit scalars: %w", err)
 		}
+
 	}
 
 	// Insert new keys into run_keys (small, separate tx)
@@ -187,6 +188,7 @@ func (db *DB) flushHistograms(runID string, histograms []parsedHistogram) error 
 		if err := tx.Commit(); err != nil {
 			return fmt.Errorf("commit histograms: %w", err)
 		}
+
 	}
 	return nil
 }
@@ -217,6 +219,7 @@ func (db *DB) flushEvents(runID string, events []eventItem) error {
 		if err := tx.Commit(); err != nil {
 			return fmt.Errorf("commit events: %w", err)
 		}
+
 	}
 	return nil
 }

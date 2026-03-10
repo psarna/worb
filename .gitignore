@@ -4,3 +4,4 @@ wandb/
 *.duckdb
 *.duckdb.wal
 scripts/__pycache__/
+.env

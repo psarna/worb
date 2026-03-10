@@ -1,9 +1,0 @@
-[project]
-name = "worb-scripts"
-version = "0.1.0"
-description = "Utility scripts for worb"
-requires-python = ">=3.10"
-dependencies = [
-    "wandb>=0.19",
-    "requests>=2.31",
-]

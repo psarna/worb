@@ -113,6 +113,7 @@ func (s *Server) setupRoutes() {
 		r.Delete("/runs/{runID}", s.apiDeleteRun)
 		r.Delete("/projects/{projectID}", s.apiDeleteProject)
 		r.Post("/query", s.apiQuery)
+		r.Get("/admin/wal-stats", s.apiWalStats)
 	})
 
 	r.Handle("/static/*", http.FileServer(http.FS(ui.Static)))
@@ -399,6 +400,11 @@ func (s *Server) apiGetFiles(w http.ResponseWriter, r *http.Request) {
 		files = []*store.File{}
 	}
 	json.NewEncoder(w).Encode(files)
+}
+
+func (s *Server) apiWalStats(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(s.store.WalStats())
 }
 
 func (s *Server) apiGetLogs(w http.ResponseWriter, r *http.Request) {

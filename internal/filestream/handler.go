@@ -19,12 +19,12 @@ type Handler struct {
 type fileStreamRequest struct {
 	Files    map[string]fileStreamFile `json:"files"`
 	Offset   map[string]int            `json:"offset"`
-	Complete bool                       `json:"complete"`
+	Complete bool                      `json:"complete"`
 }
 
 type fileStreamFile struct {
-	Offset  int        `json:"offset"`
-	Content []string   `json:"content"`
+	Offset  int      `json:"offset"`
+	Content []string `json:"content"`
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
