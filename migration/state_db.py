@@ -49,6 +49,7 @@ class StateDB:
                 summary_done INTEGER NOT NULL DEFAULT 0,
                 events_done INTEGER NOT NULL DEFAULT 0,
                 logs_done INTEGER NOT NULL DEFAULT 0,
+                files_done INTEGER NOT NULL DEFAULT 0,
                 completed INTEGER NOT NULL DEFAULT 0,
                 error_message TEXT,
                 error_count INTEGER NOT NULL DEFAULT 0,
@@ -58,6 +59,13 @@ class StateDB:
             );
         """)
         self.conn.commit()
+
+        # Additive migrations for existing databases
+        try:
+            self.conn.execute("ALTER TABLE migration_runs ADD COLUMN files_done INTEGER NOT NULL DEFAULT 0")
+            self.conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists
 
     def close(self):
         self.conn.close()
@@ -203,6 +211,13 @@ class StateDB:
         )
         self.conn.commit()
 
+    def mark_files_done(self, run_id: int):
+        self.conn.execute(
+            "UPDATE migration_runs SET files_done = 1, updated_at = datetime('now') WHERE id = ?",
+            (run_id,),
+        )
+        self.conn.commit()
+
     def mark_completed(self, run_id: int):
         self.conn.execute(
             "UPDATE migration_runs SET completed = 1, updated_at = datetime('now') WHERE id = ?",
@@ -225,7 +240,7 @@ class StateDB:
             """UPDATE migration_runs
                SET status = 'pending', error_message = NULL, error_count = 0,
                    upserted = 0, history_lines_sent = 0, history_done = 0,
-                   summary_done = 0, events_done = 0, logs_done = 0, completed = 0,
+                   summary_done = 0, events_done = 0, logs_done = 0, files_done = 0, completed = 0,
                    updated_at = datetime('now')
                WHERE id = ?""",
             (run_id,),
@@ -311,7 +326,7 @@ class StateDB:
             """UPDATE migration_runs
                SET status = 'pending', error_message = NULL, error_count = 0,
                    upserted = 0, history_lines_sent = 0, history_done = 0,
-                   summary_done = 0, events_done = 0, logs_done = 0, completed = 0,
+                   summary_done = 0, events_done = 0, logs_done = 0, files_done = 0, completed = 0,
                    updated_at = datetime('now')
                WHERE project_id = ?""",
             (project_id,),

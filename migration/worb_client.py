@@ -119,6 +119,69 @@ def send_filestream(
     retry(do, "filestream")
 
 
+def create_run_files(
+    session: requests.Session,
+    worb_url: str,
+    entity: str,
+    project: str,
+    run_name: str,
+    file_names: list[str],
+) -> list[dict]:
+    """Create file entries in worb via GraphQL and return upload info.
+
+    Returns list of dicts with keys: id, name, uploadUrl.
+    """
+    query = """
+    mutation CreateRunFiles($input: CreateRunFilesInput!) {
+        createRunFiles(input: $input) {
+            runID
+            files {
+                id
+                name
+                uploadUrl
+                uploadHeaders
+            }
+            uploadHeaders
+        }
+    }
+    """
+    variables = {
+        "input": {
+            "entityName": entity,
+            "projectName": project,
+            "runName": run_name,
+            "files": file_names,
+        }
+    }
+
+    def do():
+        resp = session.post(
+            f"{worb_url}/graphql",
+            json={"query": query, "variables": variables},
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if "errors" in data:
+            raise RuntimeError(f"GraphQL errors: {data['errors']}")
+        return data["data"]["createRunFiles"]["files"]
+
+    return retry(do, "create run files")
+
+
+def upload_file(worb_url: str, upload_url: str, local_path: str) -> None:
+    """Upload a local file to worb via PUT."""
+    # upload_url may be a relative path or full URL
+    if upload_url.startswith("/"):
+        upload_url = worb_url + upload_url
+
+    def do():
+        with open(local_path, "rb") as f:
+            resp = requests.put(upload_url, data=f)
+            resp.raise_for_status()
+
+    retry(do, f"upload {local_path}", retries=3)
+
+
 def get_wal_stats(worb_url: str) -> dict | None:
     """Fetch WAL stats from worb. Returns None on error."""
     try:

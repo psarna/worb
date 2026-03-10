@@ -94,6 +94,47 @@ def fetch_system_events(run) -> list[str]:
     return [json.dumps(row, default=str) for row in events]
 
 
+def fetch_run_files(run) -> list:
+    """Fetch the list of files for a wandb run.
+
+    Returns wandb File objects (each has .name and .download()).
+    Excludes internal files that are handled separately (history, events, logs, summary).
+    """
+    EXCLUDED = {
+        "wandb-history.jsonl",
+        "wandb-events.jsonl",
+        "wandb-summary.json",
+        "output.log",
+        "config.yaml",
+        "requirements.txt",
+        "wandb-metadata.json",
+    }
+    EXCLUDED_PREFIXES = ("artifact/", "code/")
+    try:
+        all_files = retry(lambda: list(run.files()), "list files", retries=3)
+    except Exception:
+        return []
+    return [
+        f for f in all_files
+        if f.name not in EXCLUDED and not f.name.startswith(EXCLUDED_PREFIXES)
+    ]
+
+
+def download_file(wandb_file, dest_dir: str = "/tmp/worb-migration") -> str | None:
+    """Download a wandb file to a local path. Returns the local path or None."""
+    import os
+    os.makedirs(dest_dir, exist_ok=True)
+    try:
+        downloaded = retry(
+            lambda: wandb_file.download(replace=True, root=dest_dir),
+            f"download {wandb_file.name}",
+            retries=3,
+        )
+        return downloaded.name
+    except Exception:
+        return None
+
+
 def fetch_console_logs(run) -> list[str]:
     """Fetch console logs from a wandb run. Returns lines."""
     try:

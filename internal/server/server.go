@@ -399,6 +399,13 @@ func (s *Server) apiGetFiles(w http.ResponseWriter, r *http.Request) {
 	if files == nil {
 		files = []*store.File{}
 	}
+	// Resolve relative paths to full URLs based on the current request host.
+	baseURL := "http://" + r.Host
+	for _, f := range files {
+		if len(f.URL) > 0 && f.URL[0] == '/' {
+			f.URL = baseURL + f.URL
+		}
+	}
 	json.NewEncoder(w).Encode(files)
 }
 

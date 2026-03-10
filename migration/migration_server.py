@@ -25,7 +25,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from state_db import StateDB
 from wandb_client import (
+    download_file,
     fetch_console_logs,
+    fetch_run_files,
     fetch_scan_history,
     fetch_system_events,
     get_run_summary,
@@ -34,9 +36,11 @@ from wandb_client import (
 )
 from worb_client import (
     FILESTREAM_BATCH_SIZE,
+    create_run_files,
     get_wal_stats,
     make_session,
     send_filestream,
+    upload_file,
     upsert_run_graphql,
 )
 
@@ -326,7 +330,13 @@ class Worker:
                 self.db.mark_events_done(run_id)
                 log.info("  events done for %s", run["wandb_run_id"])
 
-            # f. Complete signal
+            # f. Files
+            if not run["files_done"]:
+                self._migrate_files(session, entity, project_name, wandb_run, run)
+                self.db.mark_files_done(run_id)
+                log.info("  files done for %s", run["wandb_run_id"])
+
+            # g. Complete signal
             if not run["completed"]:
                 if wandb_run.state == "finished":
                     send_filestream(
@@ -335,7 +345,7 @@ class Worker:
                     )
                 self.db.mark_completed(run_id)
 
-            # g. Mark done
+            # h. Mark done
             self.db.update_run_status(run_id, "done")
             self.db.check_project_done(run["project_id"])
             log.info("  run %s done", run["wandb_run_id"])
@@ -344,6 +354,43 @@ class Worker:
             log.error("Error migrating run %s: %s", run["wandb_run_id"], e)
             log.error(traceback.format_exc())
             self.db.record_run_error(run_id, str(e))
+
+    def _migrate_files(self, session, entity, project_name, wandb_run, run: dict):
+        """Migrate files from wandb to worb."""
+        wandb_files = fetch_run_files(wandb_run)
+        if not wandb_files:
+            return
+
+        file_names = [f.name for f in wandb_files]
+        log.info("  migrating %d files for %s", len(file_names), run["wandb_run_id"])
+
+        # Create file entries in worb and get upload URLs
+        upload_infos = create_run_files(
+            session, settings.worb_url, entity, project_name, wandb_run.id, file_names,
+        )
+
+        # Build a map from file name to upload URL
+        url_by_name = {}
+        for info in upload_infos:
+            url_by_name[info["name"]] = info.get("uploadUrl", "")
+
+        for wf in wandb_files:
+            self._wait_if_paused()
+            if self._stopped.is_set():
+                return
+
+            upload_url = url_by_name.get(wf.name)
+            if not upload_url:
+                log.warning("  no upload URL for file %s", wf.name)
+                continue
+
+            local_path = download_file(wf)
+            if not local_path:
+                log.warning("  failed to download file %s", wf.name)
+                continue
+
+            upload_file(settings.worb_url, upload_url, local_path)
+            log.info("  uploaded file %s", wf.name)
 
     def _migrate_history(self, session, entity, project_name, wandb_run, run: dict):
         """Migrate history with resume support."""
