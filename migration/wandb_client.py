@@ -75,11 +75,10 @@ def get_run_summary(run) -> dict:
 
 def fetch_scan_history(run):
     """Fetch and merge history rows from a wandb run."""
-    scanner = retry(
-        lambda: run.scan_history(page_size=SCAN_HISTORY_PAGE_SIZE),
-        "scan_history init",
-    )
-    return merge_history_rows(scanner)
+    def _fetch():
+        scanner = run.scan_history(page_size=SCAN_HISTORY_PAGE_SIZE)
+        return merge_history_rows(scanner)
+    return retry(_fetch, "scan_history")
 
 
 def fetch_system_events(run) -> list[str]:
