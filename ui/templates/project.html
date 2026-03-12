@@ -325,6 +325,20 @@
         '#f778ba', '#79c0ff', '#56d364', '#e3b341', '#ff7b72',
         '#d2a8ff', '#ff9bce', '#a5d6ff', '#7ee787', '#f0883e',
     ];
+    let chartsLoaded = false;
+    let chartsLoading = null;
+
+    function ensureChartsLoaded() {
+        if (chartsLoaded) return;
+        if (chartsLoading) return;
+        chartsLoading = loadCharts()
+            .then(() => { chartsLoaded = true; })
+            .catch((e) => {
+                chartsLoaded = false;
+                console.warn('worb: failed to load project charts', e);
+            })
+            .finally(() => { chartsLoading = null; });
+    }
 
     function switchTab(tabName) {
         document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
@@ -333,6 +347,7 @@
         if (tabEl) {
             tabEl.classList.add('active');
             document.getElementById(tabName).classList.add('active');
+            if (tabName === 'charts') ensureChartsLoaded();
         }
     }
 
@@ -1679,6 +1694,20 @@
             }, 300);
         }
 
+        function requestVisibleKeys() {
+            let requested = 0;
+            for (const cat of Object.keys(categoryElements)) {
+                if (collapsedCategories.has(cat)) continue;
+                const catEl = categoryElements[cat];
+                for (const key of (catEl.renderedKeys || [])) {
+                    if (loadedKeys.has(key) || pendingKeys.has(key) || lazyQueue.includes(key)) continue;
+                    requestLazyLoad(key);
+                    requested++;
+                }
+            }
+            return requested;
+        }
+
         function parseRunNdjson(runID, text) {
             const name = runNames[runID] || runID.slice(0, 8);
             for (const line of text.split('\n')) {
@@ -1735,7 +1764,9 @@
                 if (lazyTimer) { clearTimeout(lazyTimer); lazyTimer = null; }
                 render();
                 if (allKeyNames) {
-                    for (const key of allKeyNames) requestLazyLoad(key);
+                    if (requestVisibleKeys() === 0) {
+                        for (const key of allKeyNames.slice(0, INITIAL_SIZE)) requestLazyLoad(key);
+                    }
                 }
             }
         };
@@ -1795,7 +1826,8 @@
     });
 
     initRunsList();
-    loadCharts();
+    const activeTab = document.querySelector('.tab.active')?.dataset.tab;
+    if (activeTab === 'charts') ensureChartsLoaded();
     </script>
 </body>
 </html>
