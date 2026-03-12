@@ -7,7 +7,7 @@ import time
 import wandb
 
 
-SCAN_HISTORY_PAGE_SIZE = 10_000  # must be large enough to avoid wandb downsampling within a page
+SCAN_HISTORY_PAGE_SIZE = 2_000  # smaller pages avoid server-side timeouts; scan_history paginates internally
 MAX_RETRIES = 5
 RETRY_BASE_DELAY = 5
 
