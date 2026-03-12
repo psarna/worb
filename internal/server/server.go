@@ -164,7 +164,15 @@ func (s *Server) apiListProjects(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) apiListRuns(w http.ResponseWriter, r *http.Request) {
 	projectID := chi.URLParam(r, "projectID")
-	runs, err := s.store.ListRuns(projectID)
+	var (
+		runs []*store.Run
+		err  error
+	)
+	if r.URL.Query().Get("view") == "charts" {
+		runs, err = s.store.ListRunsLite(projectID)
+	} else {
+		runs, err = s.store.ListRuns(projectID)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

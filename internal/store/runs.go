@@ -299,6 +299,33 @@ func (db *DB) ListRuns(projectID string) ([]*Run, error) {
 	return runs, nil
 }
 
+func (db *DB) ListRunsLite(projectID string) ([]*Run, error) {
+	rows, err := db.Query(`SELECT r.id, r.project_id, r.name, r.display_name, r.state,
+		r.history_line_count, r.created_at, r.updated_at, r.heartbeat_at
+		FROM runs r WHERE r.project_id = ? AND r.deleted_at IS NULL ORDER BY r.created_at DESC`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var runs []*Run
+	for rows.Next() {
+		r := &Run{}
+		var displayName sql.NullString
+		var createdAt, updatedAt, heartbeatAt flexTime
+		if err := rows.Scan(&r.ID, &r.ProjectID, &r.Name, &displayName, &r.State,
+			&r.HistoryLineCount, &createdAt, &updatedAt, &heartbeatAt); err != nil {
+			return nil, err
+		}
+		r.CreatedAt = createdAt.Time
+		r.UpdatedAt = updatedAt.Time
+		r.HeartbeatAt = heartbeatAt.Time
+		r.DisplayName = displayName.String
+		runs = append(runs, r)
+	}
+	return runs, nil
+}
+
 func (db *DB) DeleteRun(runID string) error {
 	res, err := db.Exec("UPDATE runs SET deleted_at = current_timestamp WHERE id = ? AND deleted_at IS NULL", runID)
 	if err != nil {

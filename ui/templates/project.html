@@ -1201,7 +1201,7 @@
         const runLineCounts = {};
         let renderPending = false;
 
-        const runsResp = await fetch(`/api/projects/${projectID}/runs`);
+        const runsResp = await fetch(`/api/projects/${projectID}/runs?view=charts`);
         const runs = await runsResp.json();
         if (!runs || runs.length === 0) {
             document.getElementById('no-charts').style.display = 'block';
