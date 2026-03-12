@@ -33,6 +33,10 @@
                 <div class="runs-sidebar" id="runs-sidebar">
                     <div class="sidebar-header">Runs <span class="sidebar-count" id="run-count">0</span><button class="sidebar-collapse" id="sidebar-collapse" title="Hide runs panel"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg></button></div>
                     <div class="sidebar-search"><input type="text" id="sidebar-search-input" placeholder="Filter runs..."></div>
+                    <div class="sidebar-bulk" id="sidebar-bulk">
+                        <button type="button" class="sidebar-bulk-btn" id="sidebar-show-all">Show all</button>
+                        <button type="button" class="sidebar-bulk-btn" id="sidebar-hide-all">Hide all</button>
+                    </div>
                     <div class="sidebar-runs" id="sidebar-runs"></div>
                     <div class="sidebar-pager" id="sidebar-pager" style="display:none;">
                         <button type="button" class="sidebar-page-btn" id="sidebar-prev" title="Previous page">&lsaquo;</button>
@@ -734,6 +738,26 @@
 
         prevBtn.addEventListener('click', () => { if (sidebarPage > 1) { sidebarPage--; renderSidebar(); } });
         nextBtn.addEventListener('click', () => { sidebarPage++; renderSidebar(); });
+
+        document.getElementById('sidebar-show-all').addEventListener('click', async () => {
+            const toShow = filteredRuns().filter(id => hiddenRuns.has(id));
+            for (const id of toShow) hiddenRuns.delete(id);
+            for (const id of toShow) { if (_onRunToggled) await _onRunToggled(id); }
+            for (const chart of everyChart) {
+                for (const ds of chart.data.datasets) ds.hidden = hiddenRuns.has(ds.runID);
+                chart.update('none');
+            }
+            renderSidebar();
+        });
+
+        document.getElementById('sidebar-hide-all').addEventListener('click', () => {
+            for (const id of filteredRuns()) hiddenRuns.add(id);
+            for (const chart of everyChart) {
+                for (const ds of chart.data.datasets) ds.hidden = hiddenRuns.has(ds.runID);
+                chart.update('none');
+            }
+            renderSidebar();
+        });
 
         renderSidebar();
     }

@@ -282,6 +282,23 @@ h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
     border-color: var(--accent);
 }
 
+.sidebar-bulk {
+    display: flex;
+    gap: 6px;
+    padding: 2px 8px 4px;
+}
+
+.sidebar-bulk-btn {
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 11px;
+    padding: 0;
+}
+
+.sidebar-bulk-btn:hover { color: var(--text); text-decoration: underline; }
+
 .sidebar-pager {
     display: flex;
     align-items: center;
