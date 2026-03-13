@@ -201,6 +201,29 @@
             display: block;
         }
 
+        .install-methods {
+            max-width: 560px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .install-option .code-block,
+        .install-run .code-block {
+            margin-bottom: 0;
+        }
+
+        .install-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+
         .lightbox {
             display: none;
             position: fixed;
@@ -265,6 +288,30 @@
     </div>
 
     <div class="lightbox" id="lightbox" onclick="closeLightbox()"></div>
+
+    <h2 style="font-size:28px; font-weight:700; margin-bottom:20px; letter-spacing:-0.5px;">Quick Install</h2>
+
+    <div class="install-methods">
+        <div class="install-option">
+            <div class="install-label">Go</div>
+            <div class="code-block" style="margin-bottom:0"><pre>go install github.com/sarna/worb@latest</pre></div>
+        </div>
+        <div class="install-option">
+            <div class="install-label">From source</div>
+            <div class="code-block" style="margin-bottom:0"><pre>git clone https://github.com/psarna/worb.git
+cd worb && go build .</pre></div>
+        </div>
+        <div class="install-option">
+            <div class="install-label">Docker</div>
+            <div class="code-block" style="margin-bottom:0"><pre>docker run -v ~/.worb:/data -p 8080:8080 \
+  ghcr.io/psarna/worb --data /data</pre></div>
+        </div>
+    </div>
+
+    <div class="install-run" style="max-width:560px; width:100%; margin-bottom:48px;">
+        <div class="install-label">Then run it</div>
+        <div class="code-block" style="margin-bottom:0"><pre>./worb <span class="cm"># starts on http://localhost:8080</span></pre></div>
+    </div>
 
     <blockquote>
         Let's be honest, metrics from your grand AI experiment fit on a consumer grade laptop from the late 90s.
