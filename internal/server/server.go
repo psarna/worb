@@ -122,6 +122,7 @@ func (s *Server) setupRoutes() {
 	r.Get("/projects/", http.RedirectHandler("/", http.StatusTemporaryRedirect).ServeHTTP)
 	r.Get("/projects/{projectID}", s.uiProject)
 	r.Get("/runs/{runID}", s.uiRun)
+	r.Get("/perf.html", s.uiPerf)
 
 	r.Get("/{entity}/{project}", s.wandbProjectRedirect)
 	r.Get("/{entity}/{project}/runs/{runName}", s.wandbRunRedirect)

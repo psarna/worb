@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/tursodatabase/libsql-client-go/libsql"
@@ -54,6 +56,161 @@ type DB struct {
 	dataDir string
 	ctx     context.Context
 	cancel  context.CancelFunc
+	sqlPerf *sqlPerfTracker
+}
+
+type SQLPerfTopQuery struct {
+	Query   string  `json:"query"`
+	Count   int64   `json:"count"`
+	AvgMS   float64 `json:"avgMs"`
+	MaxMS   float64 `json:"maxMs"`
+	TotalMS float64 `json:"totalMs"`
+}
+
+type SQLPerfHistogramBucket struct {
+	Label   string  `json:"label"`
+	Count   int64   `json:"count"`
+	Percent float64 `json:"percent"`
+}
+
+type SQLPerfSnapshot struct {
+	TotalQueries int64                    `json:"totalQueries"`
+	TopQueries   []SQLPerfTopQuery        `json:"topQueries"`
+	Histogram    []SQLPerfHistogramBucket `json:"histogram"`
+}
+
+type sqlPerfTracker struct {
+	mu       sync.Mutex
+	total    int64
+	byType   map[string]*sqlPerfAgg
+	boundsMS []float64
+	labels   []string
+	counts   []int64
+}
+
+type sqlPerfAgg struct {
+	count int64
+	total float64
+	max   float64
+}
+
+func newSQLPerfTracker() *sqlPerfTracker {
+	labels := []string{
+		"<=1ms",
+		"<=5ms",
+		"<=10ms",
+		"<=25ms",
+		"<=50ms",
+		"<=100ms",
+		"<=250ms",
+		"<=500ms",
+		"<=1s",
+		"<=2.5s",
+		">2.5s",
+	}
+	return &sqlPerfTracker{
+		boundsMS: []float64{1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500},
+		labels:   labels,
+		counts:   make([]int64, len(labels)),
+		byType:   make(map[string]*sqlPerfAgg),
+	}
+}
+
+func normalizeSQLQuery(query string) string {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return "<empty>"
+	}
+	fields := strings.Fields(query)
+	query = strings.Join(fields, " ")
+	if len(query) > 260 {
+		return query[:260] + "..."
+	}
+	return query
+}
+
+func (t *sqlPerfTracker) record(query string, d time.Duration) {
+	query = normalizeSQLQuery(query)
+	ms := float64(d) / float64(time.Millisecond)
+	if ms < 0 {
+		ms = 0
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	t.total++
+	idx := len(t.boundsMS)
+	for i, b := range t.boundsMS {
+		if ms <= b {
+			idx = i
+			break
+		}
+	}
+	t.counts[idx]++
+
+	agg, ok := t.byType[query]
+	if !ok {
+		agg = &sqlPerfAgg{}
+		t.byType[query] = agg
+	}
+	agg.count++
+	agg.total += ms
+	if ms > agg.max {
+		agg.max = ms
+	}
+}
+
+func (t *sqlPerfTracker) snapshot() SQLPerfSnapshot {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	top := make([]SQLPerfTopQuery, 0, len(t.byType))
+	for typ, agg := range t.byType {
+		avg := 0.0
+		if agg.count > 0 {
+			avg = agg.total / float64(agg.count)
+		}
+		top = append(top, SQLPerfTopQuery{
+			Query:   typ,
+			Count:   agg.count,
+			AvgMS:   avg,
+			MaxMS:   agg.max,
+			TotalMS: agg.total,
+		})
+	}
+	sort.Slice(top, func(i, j int) bool {
+		if top[i].AvgMS == top[j].AvgMS {
+			return top[i].MaxMS > top[j].MaxMS
+		}
+		return top[i].AvgMS > top[j].AvgMS
+	})
+	if len(top) > 10 {
+		top = top[:10]
+	}
+	h := make([]SQLPerfHistogramBucket, len(t.labels))
+	var maxCount int64
+	for i := range t.counts {
+		if t.counts[i] > maxCount {
+			maxCount = t.counts[i]
+		}
+	}
+	for i := range t.labels {
+		percent := 0.0
+		if maxCount > 0 {
+			percent = float64(t.counts[i]) * 100.0 / float64(maxCount)
+		}
+		h[i] = SQLPerfHistogramBucket{
+			Label:   t.labels[i],
+			Count:   t.counts[i],
+			Percent: percent,
+		}
+	}
+	return SQLPerfSnapshot{
+		TotalQueries: t.total,
+		TopQueries:   top,
+		Histogram:    h,
+	}
 }
 
 func (db *DB) castJSON(col string) string {
@@ -103,7 +260,7 @@ func New(dataDir, engine string) (*DB, error) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	store := &DB{DB: db, Engine: engine, dataDir: dataDir, ctx: ctx, cancel: cancel}
+	store := &DB{DB: db, Engine: engine, dataDir: dataDir, ctx: ctx, cancel: cancel, sqlPerf: newSQLPerfTracker()}
 	if err := store.migrate(); err != nil {
 		db.Close()
 		cancel()
@@ -135,6 +292,62 @@ func (db *DB) Close() error {
 	db.wal.close()
 	db.cancel()
 	return db.DB.Close()
+}
+
+func (db *DB) recordSQLPerf(query string, start time.Time) {
+	if db.sqlPerf == nil {
+		return
+	}
+	db.sqlPerf.record(query, time.Since(start))
+}
+
+func (db *DB) SQLPerfSnapshot() SQLPerfSnapshot {
+	if db.sqlPerf == nil {
+		return SQLPerfSnapshot{}
+	}
+	return db.sqlPerf.snapshot()
+}
+
+func (db *DB) Exec(query string, args ...any) (sql.Result, error) {
+	start := time.Now()
+	res, err := db.DB.Exec(query, args...)
+	db.recordSQLPerf(query, start)
+	return res, err
+}
+
+func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	start := time.Now()
+	res, err := db.DB.ExecContext(ctx, query, args...)
+	db.recordSQLPerf(query, start)
+	return res, err
+}
+
+func (db *DB) Query(query string, args ...any) (*sql.Rows, error) {
+	start := time.Now()
+	rows, err := db.DB.Query(query, args...)
+	db.recordSQLPerf(query, start)
+	return rows, err
+}
+
+func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	start := time.Now()
+	rows, err := db.DB.QueryContext(ctx, query, args...)
+	db.recordSQLPerf(query, start)
+	return rows, err
+}
+
+func (db *DB) QueryRow(query string, args ...any) *sql.Row {
+	start := time.Now()
+	row := db.DB.QueryRow(query, args...)
+	db.recordSQLPerf(query, start)
+	return row
+}
+
+func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	start := time.Now()
+	row := db.DB.QueryRowContext(ctx, query, args...)
+	db.recordSQLPerf(query, start)
+	return row
 }
 
 type QueryResult struct {

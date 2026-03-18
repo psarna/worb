@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Performance Insights</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        body { max-width: 1100px; margin: 0 auto; padding: 24px; }
+        h1 { margin-top: 0; }
+        .card { border: 1px solid #2a2a2a; border-radius: 8px; padding: 16px; margin-bottom: 20px; }
+        .card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+        .total-inline { display: inline-flex; align-items: baseline; gap: 10px; }
+        .total-inline .label { color: var(--text-secondary); }
+        .total-inline .value { font-size: 26px; font-weight: 700; }
+        .auto-refresh { display: inline-flex; align-items: center; gap: 10px; color: var(--text-secondary); font-size: 13px; user-select: none; }
+        .switch { position: relative; display: inline-block; width: 46px; height: 26px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            inset: 0;
+            background-color: #334155;
+            border-radius: 999px;
+            transition: 0.18s ease;
+            box-shadow: inset 0 0 0 1px #475569;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 3px;
+            top: 3px;
+            background-color: #e2e8f0;
+            border-radius: 50%;
+            transition: 0.18s ease;
+        }
+        .switch input:checked + .slider {
+            background: linear-gradient(135deg, #2563eb, #38bdf8);
+            box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 0 14px rgba(56, 189, 248, 0.25);
+        }
+        .switch input:checked + .slider:before {
+            transform: translateX(20px);
+            background: #ffffff;
+        }
+        .interval-input {
+            width: 62px;
+            padding: 5px 7px;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            background: #111827;
+            color: #e5e7eb;
+            font-size: 13px;
+        }
+        .interval-input:disabled { opacity: 0.55; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a2a2a; vertical-align: top; }
+        code { white-space: pre-wrap; word-break: break-word; }
+        .hist { display: flex; align-items: flex-end; gap: 10px; min-height: 140px; padding-top: 10px; }
+        .hist-col { width: 70px; text-align: center; }
+        .hist-count { font-family: monospace; font-size: 12px; color: #9ca3af; margin-bottom: 6px; }
+        .hist-bar { height: 100px; border-radius: 8px; background: #1f2937; display: flex; align-items: flex-end; overflow: hidden; }
+        .hist-fill { width: 100%; background: #22c55e; min-height: 2px; }
+        .hist-label { font-family: monospace; font-size: 12px; margin-top: 6px; color: #9ca3af; }
+        .latency-warn { color: #facc15; font-weight: 600; }
+        .latency-bad { color: #f87171; font-weight: 700; }
+        .empty { color: #9ca3af; font-style: italic; }
+    </style>
+</head>
+<body>
+    <h1>Performance Insights</h1>
+    <div style="margin-bottom: 16px;">
+        <a href="/" style="color: var(--text-secondary); text-decoration: none;">return to worb</a>
+    </div>
+
+    <div class="card">
+        <div class="card-head">
+            <div class="total-inline">
+                <span class="label">Total tracked SQL queries</span>
+                <span class="value">{{.Perf.TotalQueries}}</span>
+            </div>
+            <label class="auto-refresh">
+                <span>auto-refresh</span>
+                <span class="switch">
+                    <input id="auto-refresh-toggle" type="checkbox">
+                    <span class="slider"></span>
+                </span>
+                <input id="auto-refresh-interval" class="interval-input" type="number" min="1" max="3600" step="1" value="3">
+                <span>s</span>
+            </label>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="hist">
+            {{range .Perf.Histogram}}
+            <div class="hist-col">
+                <div class="hist-count">{{.Count}}</div>
+                <div class="hist-bar">
+                    <div class="hist-fill" style="height: {{printf "%.2f" .Percent}}%;"></div>
+                </div>
+                <div class="hist-label">{{.Label}}</div>
+            </div>
+            {{end}}
+        </div>
+    </div>
+
+    <div class="card">
+        {{if .Perf.TopQueries}}
+        <table>
+            <thead>
+                <tr>
+                    <th>Query</th>
+                    <th>Count</th>
+                    <th>Avg</th>
+                    <th>Max</th>
+                    <th>Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Perf.TopQueries}}
+                <tr>
+                    <td><code class="sql-query">{{.Query}}</code></td>
+                    <td>{{.Count}}</td>
+                    <td class="latency-ms" data-ms="{{printf "%.6f" .AvgMS}}">{{printf "%.2fms" .AvgMS}}</td>
+                    <td class="latency-ms" data-ms="{{printf "%.6f" .MaxMS}}">{{printf "%.2fms" .MaxMS}}</td>
+                    <td>{{printf "%.2fms" .TotalMS}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <div class="empty">No SQL query data yet.</div>
+        {{end}}
+    </div>
+
+    <script>
+    const SQL_KEYWORDS = /\b(SELECT|FROM|WHERE|ORDER|BY|LIMIT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|INTO|VALUES|SET|AND|OR|NOT|IN|IS|NULL|AS|ON|JOIN|LEFT|RIGHT|INNER|OUTER|GROUP|HAVING|UNION|ALL|DISTINCT|CASE|WHEN|THEN|ELSE|END|EXISTS|BETWEEN|LIKE|INDEX|PRIMARY|KEY|DEFAULT|REFERENCES|IF|COUNT|SUM|AVG|MIN|MAX|DESC|ASC|CAST|VARCHAR|TEXT|INTEGER|TIMESTAMP|JSON|UNIQUE|OFFSET)\b/gi;
+
+    function highlightSQL(text) {
+        return text
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/(--.*)/gm, '<span class="sql-comment">$1</span>')
+            .replace(/('(?:[^'\\]|\\.)*')/g, '<span class="sql-string">$1</span>')
+            .replace(/\b(\d+(?:\.\d+)?)\b/g, '<span class="sql-number">$1</span>')
+            .replace(SQL_KEYWORDS, '<span class="sql-keyword">$1</span>');
+    }
+
+    document.querySelectorAll('.sql-query').forEach((el) => {
+        el.innerHTML = highlightSQL(el.textContent || '');
+    });
+
+    document.querySelectorAll('.latency-ms').forEach((el) => {
+        const ms = parseFloat(el.dataset.ms || '0');
+        if (ms > 1000) {
+            el.classList.add('latency-bad');
+        } else if (ms >= 500) {
+            el.classList.add('latency-warn');
+        }
+    });
+
+    const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
+    const autoRefreshInterval = document.getElementById('auto-refresh-interval');
+    const AUTO_REFRESH_KEY = 'worb_perf_auto_refresh';
+    const AUTO_REFRESH_INTERVAL_KEY = 'worb_perf_auto_refresh_interval_s';
+    let autoRefreshTimer = null;
+
+    function setAutoRefresh(enabled) {
+        if (autoRefreshTimer) {
+            clearInterval(autoRefreshTimer);
+            autoRefreshTimer = null;
+        }
+        autoRefreshInterval.disabled = !enabled;
+        if (enabled) {
+            const seconds = Math.max(1, Math.min(3600, parseInt(autoRefreshInterval.value || '3', 10) || 3));
+            autoRefreshInterval.value = String(seconds);
+            autoRefreshTimer = setInterval(() => {
+                window.location.reload();
+            }, seconds * 1000);
+        }
+    }
+
+    const savedAutoRefresh = localStorage.getItem(AUTO_REFRESH_KEY) === '1';
+    const savedInterval = parseInt(localStorage.getItem(AUTO_REFRESH_INTERVAL_KEY) || '3', 10);
+    autoRefreshInterval.value = String(Math.max(1, Math.min(3600, savedInterval || 3)));
+    autoRefreshToggle.checked = savedAutoRefresh;
+    setAutoRefresh(savedAutoRefresh);
+
+    autoRefreshToggle.addEventListener('change', () => {
+        const enabled = autoRefreshToggle.checked;
+        localStorage.setItem(AUTO_REFRESH_KEY, enabled ? '1' : '0');
+        setAutoRefresh(enabled);
+    });
+
+    autoRefreshInterval.addEventListener('change', () => {
+        const seconds = Math.max(1, Math.min(3600, parseInt(autoRefreshInterval.value || '3', 10) || 3));
+        autoRefreshInterval.value = String(seconds);
+        localStorage.setItem(AUTO_REFRESH_INTERVAL_KEY, String(seconds));
+        if (autoRefreshToggle.checked) {
+            setAutoRefresh(true);
+        }
+    });
+    </script>
+</body>
+</html>

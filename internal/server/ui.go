@@ -95,3 +95,9 @@ func (s *Server) uiRun(w http.ResponseWriter, r *http.Request) {
 		"DBEngine":    s.config.DBEngine,
 	})
 }
+
+func (s *Server) uiPerf(w http.ResponseWriter, r *http.Request) {
+	templates.ExecuteTemplate(w, "perf.html", map[string]any{
+		"Perf": s.store.SQLPerfSnapshot(),
+	})
+}
