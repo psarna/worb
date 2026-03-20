@@ -49,6 +49,11 @@ func TestPurgeDeletedRun(t *testing.T) {
 	if scalarCount != 200 {
 		t.Fatalf("expected 200 scalars, got %d", scalarCount)
 	}
+	var stepCount int
+	db.QueryRow("SELECT COUNT(*) FROM run_steps WHERE run_id = ?", run.ID).Scan(&stepCount)
+	if stepCount != 200 {
+		t.Fatalf("expected 200 run_steps, got %d", stepCount)
+	}
 
 	// Soft-delete the run
 	if err := db.DeleteRun(run.ID); err != nil {
@@ -84,6 +89,10 @@ func TestPurgeDeletedRun(t *testing.T) {
 	db.QueryRow("SELECT COUNT(*) FROM history_scalars WHERE run_id = ?", run.ID).Scan(&scalarCount)
 	if scalarCount != 0 {
 		t.Errorf("expected 0 scalars after purge, got %d", scalarCount)
+	}
+	db.QueryRow("SELECT COUNT(*) FROM run_steps WHERE run_id = ?", run.ID).Scan(&stepCount)
+	if stepCount != 0 {
+		t.Errorf("expected 0 run_steps after purge, got %d", stepCount)
 	}
 
 	var runCount int

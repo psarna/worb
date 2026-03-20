@@ -126,7 +126,7 @@ func (db *DB) processLogs(items []logItem) error {
 // counterQueries maps counter columns to queries that return the actual count.
 // Using absolute counts instead of additive deltas makes re-migration idempotent.
 var counterQueries = map[string]string{
-	"history_line_count": "SELECT COUNT(DISTINCT step) FROM history_scalars WHERE run_id = ?",
+	"history_line_count": "SELECT COUNT(*) FROM run_steps WHERE run_id = ?",
 	"events_line_count":  "SELECT COUNT(*) FROM system_events WHERE run_id = ?",
 	"log_line_count":     "SELECT COUNT(*) FROM console_logs WHERE run_id = ?",
 }

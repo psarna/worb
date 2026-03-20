@@ -93,6 +93,7 @@ const (
 
 func (db *DB) flushScalars(runID string, scalars []parsedScalar) error {
 	keySet := map[string]struct{}{}
+	stepSet := map[int]struct{}{}
 
 	for txStart := 0; txStart < len(scalars); txStart += txChunkSize {
 		txEnd := txStart + txChunkSize
@@ -120,6 +121,7 @@ func (db *DB) flushScalars(runID string, scalars []parsedScalar) error {
 				query += "(?,?,?,?,?)"
 				args = append(args, runID, s.step, s.key, s.value, s.xStep)
 				keySet[s.key] = struct{}{}
+				stepSet[s.step] = struct{}{}
 			}
 			if _, err := tx.Exec(query, args...); err != nil {
 				tx.Rollback()
@@ -130,6 +132,23 @@ func (db *DB) flushScalars(runID string, scalars []parsedScalar) error {
 			return fmt.Errorf("commit scalars: %w", err)
 		}
 
+	}
+
+	if len(stepSet) > 0 {
+		query := "INSERT OR IGNORE INTO run_steps (run_id, step) VALUES "
+		args := make([]interface{}, 0, len(stepSet)*2)
+		first := true
+		for step := range stepSet {
+			if !first {
+				query += ","
+			}
+			query += "(?,?)"
+			args = append(args, runID, step)
+			first = false
+		}
+		if _, err := db.Exec(query, args...); err != nil {
+			return fmt.Errorf("insert run_steps: %w", err)
+		}
 	}
 
 	// Insert new keys into run_keys (small, separate tx)
@@ -272,6 +291,69 @@ func (db *DB) GetHistoryKeys(runID string) ([]string, error) {
 	return keys, rows.Err()
 }
 
+func (db *DB) ensureRunSteps(runID string) error {
+	var historyLineCount int
+	if err := db.QueryRow("SELECT history_line_count FROM runs WHERE id = ?", runID).Scan(&historyLineCount); err != nil {
+		return err
+	}
+
+	var stepCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM run_steps WHERE run_id = ?", runID).Scan(&stepCount); err != nil {
+		return err
+	}
+	if stepCount > 0 || historyLineCount == 0 {
+		return nil
+	}
+
+	if _, err := db.Exec(`
+		INSERT OR IGNORE INTO run_steps (run_id, step)
+		SELECT run_id, step
+		FROM history_scalars
+		WHERE run_id = ?
+		GROUP BY run_id, step
+	`, runID); err != nil {
+		return fmt.Errorf("backfill run_steps: %w", err)
+	}
+
+	var count int
+	if err := db.QueryRow("SELECT COUNT(*) FROM run_steps WHERE run_id = ?", runID).Scan(&count); err != nil {
+		return err
+	}
+	if _, err := db.Exec("UPDATE runs SET history_line_count = ? WHERE id = ?", count, runID); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (db *DB) countRunSteps(runID string, xMin, xMax *float64) (int, error) {
+	if err := db.ensureRunSteps(runID); err != nil {
+		return 0, err
+	}
+	if xMin == nil && xMax == nil {
+		var count int
+		if err := db.QueryRow("SELECT history_line_count FROM runs WHERE id = ?", runID).Scan(&count); err != nil {
+			return 0, err
+		}
+		return count, nil
+	}
+
+	query := "SELECT COUNT(*) FROM run_steps WHERE run_id = ?"
+	args := []interface{}{runID}
+	if xMin != nil {
+		query += " AND step >= ?"
+		args = append(args, int(*xMin))
+	}
+	if xMax != nil {
+		query += " AND step <= ?"
+		args = append(args, int(*xMax))
+	}
+	var count int
+	if err := db.QueryRow(query, args...).Scan(&count); err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 type ScalarPoint struct {
 	Key   string   `json:"k"`
 	Step  float64  `json:"s"`
@@ -289,25 +371,16 @@ func (db *DB) StreamHistoryScalars(runID string, maxPoints int, filterKeys []str
 	needsBucket := false
 	bucketSize := 1
 	if maxPoints > 0 {
-		var totalRows int
-		if xMin != nil || xMax != nil {
-			rangeFilter := " WHERE run_id = ?"
-			args := []interface{}{runID}
-			if xMin != nil {
-				rangeFilter += " AND step >= ?"
-				args = append(args, int(*xMin))
-			}
-			if xMax != nil {
-				rangeFilter += " AND step <= ?"
-				args = append(args, int(*xMax))
-			}
-			db.QueryRow("SELECT COUNT(DISTINCT step) FROM history_scalars"+rangeFilter, args...).Scan(&totalRows)
-		} else {
-			db.QueryRow("SELECT history_line_count FROM runs WHERE id = ?", runID).Scan(&totalRows)
+		totalRows, err := db.countRunSteps(runID, xMin, xMax)
+		if err != nil {
+			return err
 		}
 		if totalRows > maxPoints {
 			needsBucket = true
 			bucketSize = totalRows / maxPoints
+			if bucketSize == 0 {
+				bucketSize = 1
+			}
 		}
 	}
 

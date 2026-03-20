@@ -49,7 +49,7 @@ func (db *DB) purgeDeletedData(batchSize int) (bool, error) {
 	}
 
 	// Delete data in batches from each table
-	dataTables := []string{"history_scalars", "history_histograms", "run_keys", "system_events", "console_logs", "files", "artifacts"}
+	dataTables := []string{"history_scalars", "history_histograms", "run_steps", "run_keys", "system_events", "console_logs", "files", "artifacts"}
 	for _, table := range dataTables {
 		deleted, err := db.deleteBatch(table, "run_id", runID, batchSize)
 		if err != nil {
@@ -72,6 +72,8 @@ func (db *DB) deleteBatch(table, column, id string, batchSize int) (int64, error
 	case "history_scalars", "history_histograms":
 		// WITHOUT ROWID tables — use primary key subquery
 		query = "DELETE FROM " + table + " WHERE (" + column + ", key, step) IN (SELECT " + column + ", key, step FROM " + table + " WHERE " + column + " = ? LIMIT ?)"
+	case "run_steps":
+		query = "DELETE FROM " + table + " WHERE (" + column + ", step) IN (SELECT " + column + ", step FROM " + table + " WHERE " + column + " = ? LIMIT ?)"
 	case "run_keys":
 		query = "DELETE FROM " + table + " WHERE (" + column + ", key) IN (SELECT " + column + ", key FROM " + table + " WHERE " + column + " = ? LIMIT ?)"
 	default:

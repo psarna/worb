@@ -460,6 +460,11 @@ func (db *DB) migrateSQLite() error {
 			vals TEXT NOT NULL,
 			PRIMARY KEY (run_id, key, step)
 		) WITHOUT ROWID`,
+		`CREATE TABLE IF NOT EXISTS run_steps (
+			run_id TEXT NOT NULL REFERENCES runs(id),
+			step INTEGER NOT NULL,
+			PRIMARY KEY (run_id, step)
+		) WITHOUT ROWID`,
 		`CREATE TABLE IF NOT EXISTS system_events (
 			run_id TEXT NOT NULL REFERENCES runs(id),
 			line_num INTEGER NOT NULL,
@@ -513,6 +518,7 @@ func (db *DB) migrateSQLite() error {
 	) WITHOUT ROWID`)
 
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_history_scalars_run_step ON history_scalars(run_id, step)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_run_steps_run_step ON run_steps(run_id, step)`)
 
 	return nil
 }
