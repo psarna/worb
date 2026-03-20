@@ -123,9 +123,9 @@
                 <tr>
                     <td><code class="sql-query">{{.Query}}</code></td>
                     <td>{{.Count}}</td>
-                    <td class="latency-ms" data-ms="{{printf "%.6f" .AvgMS}}">{{printf "%.2fms" .AvgMS}}</td>
-                    <td class="latency-ms" data-ms="{{printf "%.6f" .MaxMS}}">{{printf "%.2fms" .MaxMS}}</td>
-                    <td>{{printf "%.2fms" .TotalMS}}</td>
+                    <td class="latency-ms" data-ms="{{printf "%.6f" .AvgMS}}"></td>
+                    <td class="latency-ms" data-ms="{{printf "%.6f" .MaxMS}}"></td>
+                    <td class="latency-ms" data-ms="{{printf "%.6f" .TotalMS}}"></td>
                 </tr>
                 {{end}}
             </tbody>
@@ -151,8 +151,22 @@
         el.innerHTML = highlightSQL(el.textContent || '');
     });
 
+    function formatLatency(ms) {
+        if (ms >= 3600000) {
+            return `${(ms / 3600000).toFixed(2)}h`;
+        }
+        if (ms >= 60000) {
+            return `${(ms / 60000).toFixed(2)}m`;
+        }
+        if (ms >= 1000) {
+            return `${(ms / 1000).toFixed(2)}s`;
+        }
+        return `${ms.toFixed(2)}ms`;
+    }
+
     document.querySelectorAll('.latency-ms').forEach((el) => {
         const ms = parseFloat(el.dataset.ms || '0');
+        el.textContent = formatLatency(ms);
         if (ms > 1000) {
             el.classList.add('latency-bad');
         } else if (ms >= 500) {
