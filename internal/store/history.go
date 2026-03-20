@@ -3,6 +3,7 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 func (db *DB) InsertHistory(runID string, step int, data json.RawMessage) error {
@@ -93,7 +94,6 @@ const (
 
 func (db *DB) flushScalars(runID string, scalars []parsedScalar) error {
 	keySet := map[string]struct{}{}
-	stepSet := map[int]struct{}{}
 
 	for txStart := 0; txStart < len(scalars); txStart += txChunkSize {
 		txEnd := txStart + txChunkSize
@@ -106,6 +106,7 @@ func (db *DB) flushScalars(runID string, scalars []parsedScalar) error {
 		if err != nil {
 			return fmt.Errorf("begin tx: %w", err)
 		}
+		txStepSet := map[int]struct{}{}
 		for i := 0; i < len(txSlice); i += multiRowSize {
 			end := i + multiRowSize
 			if end > len(txSlice) {
@@ -121,34 +122,36 @@ func (db *DB) flushScalars(runID string, scalars []parsedScalar) error {
 				query += "(?,?,?,?,?)"
 				args = append(args, runID, s.step, s.key, s.value, s.xStep)
 				keySet[s.key] = struct{}{}
-				stepSet[s.step] = struct{}{}
+				txStepSet[s.step] = struct{}{}
 			}
 			if _, err := tx.Exec(query, args...); err != nil {
 				tx.Rollback()
 				return fmt.Errorf("insert scalars: %w", err)
 			}
 		}
+
+		if len(txStepSet) > 0 {
+			query := "INSERT OR IGNORE INTO run_steps (run_id, step) VALUES "
+			args := make([]interface{}, 0, len(txStepSet)*2)
+			first := true
+			for step := range txStepSet {
+				if !first {
+					query += ","
+				}
+				query += "(?,?)"
+				args = append(args, runID, step)
+				first = false
+			}
+			if _, err := tx.Exec(query, args...); err != nil {
+				tx.Rollback()
+				return fmt.Errorf("insert run_steps: %w", err)
+			}
+		}
+
 		if err := tx.Commit(); err != nil {
 			return fmt.Errorf("commit scalars: %w", err)
 		}
 
-	}
-
-	if len(stepSet) > 0 {
-		query := "INSERT OR IGNORE INTO run_steps (run_id, step) VALUES "
-		args := make([]interface{}, 0, len(stepSet)*2)
-		first := true
-		for step := range stepSet {
-			if !first {
-				query += ","
-			}
-			query += "(?,?)"
-			args = append(args, runID, step)
-			first = false
-		}
-		if _, err := db.Exec(query, args...); err != nil {
-			return fmt.Errorf("insert run_steps: %w", err)
-		}
 	}
 
 	// Insert new keys into run_keys (small, separate tx)
@@ -291,6 +294,10 @@ func (db *DB) GetHistoryKeys(runID string) ([]string, error) {
 	return keys, rows.Err()
 }
 
+func isSQLiteBusy(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "SQLITE_BUSY")
+}
+
 func (db *DB) ensureRunSteps(runID string) error {
 	var historyLineCount int
 	if err := db.QueryRow("SELECT history_line_count FROM runs WHERE id = ?", runID).Scan(&historyLineCount); err != nil {
@@ -312,6 +319,9 @@ func (db *DB) ensureRunSteps(runID string) error {
 		WHERE run_id = ?
 		GROUP BY run_id, step
 	`, runID); err != nil {
+		if isSQLiteBusy(err) {
+			return err
+		}
 		return fmt.Errorf("backfill run_steps: %w", err)
 	}
 
@@ -327,7 +337,24 @@ func (db *DB) ensureRunSteps(runID string) error {
 
 func (db *DB) countRunSteps(runID string, xMin, xMax *float64) (int, error) {
 	if err := db.ensureRunSteps(runID); err != nil {
-		return 0, err
+		if !isSQLiteBusy(err) {
+			return 0, err
+		}
+		query := "SELECT COUNT(DISTINCT step) FROM history_scalars WHERE run_id = ?"
+		args := []interface{}{runID}
+		if xMin != nil {
+			query += " AND step >= ?"
+			args = append(args, int(*xMin))
+		}
+		if xMax != nil {
+			query += " AND step <= ?"
+			args = append(args, int(*xMax))
+		}
+		var count int
+		if err := db.QueryRow(query, args...).Scan(&count); err != nil {
+			return 0, err
+		}
+		return count, nil
 	}
 	if xMin == nil && xMax == nil {
 		var count int
