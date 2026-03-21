@@ -54,6 +54,30 @@
             font-size: 13px;
         }
         .interval-input:disabled { opacity: 0.55; }
+        .split-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+        }
+        .storage-panel { min-width: 0; }
+        .storage-title { margin: 0 0 12px; font-size: 16px; }
+        .storage-list { display: grid; gap: 10px; }
+        .storage-item {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 16px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+        .storage-item:last-child {
+            padding-bottom: 0;
+            border-bottom: 0;
+        }
+        .storage-name { font-weight: 600; word-break: break-word; }
+        .storage-meta { margin-top: 4px; color: var(--text-secondary); font-size: 13px; word-break: break-word; }
+        .storage-size { font-family: monospace; color: #cbd5e1; white-space: nowrap; }
+        .storage-loading { color: var(--text-secondary); }
         table { width: 100%; border-collapse: collapse; }
         th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid #2a2a2a; vertical-align: top; }
         code { white-space: pre-wrap; word-break: break-word; }
@@ -66,6 +90,9 @@
         .latency-warn { color: #facc15; font-weight: 600; }
         .latency-bad { color: #f87171; font-weight: 700; }
         .empty { color: #9ca3af; font-style: italic; }
+        @media (max-width: 800px) {
+            .split-grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
@@ -78,7 +105,7 @@
         <div class="card-head">
             <div class="total-inline">
                 <span class="label">Total tracked SQL queries</span>
-                <span class="value">{{.Perf.TotalQueries}}</span>
+                <span class="value" id="total-queries">{{.Perf.TotalQueries}}</span>
             </div>
             <label class="auto-refresh">
                 <span>auto-refresh</span>
@@ -93,7 +120,20 @@
     </div>
 
     <div class="card">
-        <div class="hist">
+        <div class="split-grid">
+            <div class="storage-panel">
+                <h2 class="storage-title">Fattest projects</h2>
+                <div id="storage-projects" class="storage-loading">Loading...</div>
+            </div>
+            <div class="storage-panel">
+                <h2 class="storage-title">Fattest runs</h2>
+                <div id="storage-runs" class="storage-loading">Loading...</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="hist" id="latency-histogram">
             {{range .Perf.Histogram}}
             <div class="hist-col">
                 <div class="hist-count">{{.Count}}</div>
@@ -107,7 +147,6 @@
     </div>
 
     <div class="card">
-        {{if .Perf.TopQueries}}
         <table>
             <thead>
                 <tr>
@@ -118,7 +157,7 @@
                     <th>Total</th>
                 </tr>
             </thead>
-            <tbody>
+            <tbody id="top-queries-body">
                 {{range .Perf.TopQueries}}
                 <tr>
                     <td><code class="sql-query">{{.Query}}</code></td>
@@ -130,12 +169,29 @@
                 {{end}}
             </tbody>
         </table>
-        {{else}}
-        <div class="empty">No SQL query data yet.</div>
-        {{end}}
+        <div id="top-queries-empty" class="empty" {{if .Perf.TopQueries}}style="display: none;"{{end}}>No SQL query data yet.</div>
     </div>
 
     <script>
+    const initialPerf = {
+        totalQueries: {{.Perf.TotalQueries}},
+        topQueries: [
+            {{range $i, $q := .Perf.TopQueries}}{{if $i}},{{end}}{
+                query: {{printf "%q" $q.Query}},
+                count: {{$q.Count}},
+                avgMs: {{$q.AvgMS}},
+                maxMs: {{$q.MaxMS}},
+                totalMs: {{$q.TotalMS}}
+            }{{end}}
+        ],
+        histogram: [
+            {{range $i, $h := .Perf.Histogram}}{{if $i}},{{end}}{
+                label: {{printf "%q" $h.Label}},
+                count: {{$h.Count}},
+                percent: {{$h.Percent}}
+            }{{end}}
+        ]
+    };
     const SQL_KEYWORDS = /\b(SELECT|FROM|WHERE|ORDER|BY|LIMIT|INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TABLE|INTO|VALUES|SET|AND|OR|NOT|IN|IS|NULL|AS|ON|JOIN|LEFT|RIGHT|INNER|OUTER|GROUP|HAVING|UNION|ALL|DISTINCT|CASE|WHEN|THEN|ELSE|END|EXISTS|BETWEEN|LIKE|INDEX|PRIMARY|KEY|DEFAULT|REFERENCES|IF|COUNT|SUM|AVG|MIN|MAX|DESC|ASC|CAST|VARCHAR|TEXT|INTEGER|TIMESTAMP|JSON|UNIQUE|OFFSET)\b/gi;
 
     function highlightSQL(text) {
@@ -147,9 +203,11 @@
             .replace(SQL_KEYWORDS, '<span class="sql-keyword">$1</span>');
     }
 
-    document.querySelectorAll('.sql-query').forEach((el) => {
-        el.innerHTML = highlightSQL(el.textContent || '');
-    });
+    function highlightSQLIn(root = document) {
+        root.querySelectorAll('.sql-query').forEach((el) => {
+            el.innerHTML = highlightSQL(el.textContent || '');
+        });
+    }
 
     function formatLatency(ms) {
         if (ms >= 3600000) {
@@ -164,15 +222,109 @@
         return `${ms.toFixed(2)}ms`;
     }
 
-    document.querySelectorAll('.latency-ms').forEach((el) => {
-        const ms = parseFloat(el.dataset.ms || '0');
-        el.textContent = formatLatency(ms);
-        if (ms > 1000) {
-            el.classList.add('latency-bad');
-        } else if (ms >= 500) {
-            el.classList.add('latency-warn');
+    function formatBytes(bytes) {
+        if (bytes >= 1024 * 1024 * 1024) {
+            return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
         }
-    });
+        return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
+    function latencyClass(ms) {
+        if (ms > 1000) {
+            return 'latency-bad';
+        }
+        if (ms >= 500) {
+            return 'latency-warn';
+        }
+        return '';
+    }
+
+    function renderHistogram(histogram) {
+        const root = document.getElementById('latency-histogram');
+        root.innerHTML = histogram.map((bucket) => `
+            <div class="hist-col">
+                <div class="hist-count">${bucket.count}</div>
+                <div class="hist-bar">
+                    <div class="hist-fill" style="height: ${Number(bucket.percent || 0).toFixed(2)}%;"></div>
+                </div>
+                <div class="hist-label">${bucket.label}</div>
+            </div>
+        `).join('');
+    }
+
+    function renderTopQueries(topQueries) {
+        const body = document.getElementById('top-queries-body');
+        const empty = document.getElementById('top-queries-empty');
+        if (!topQueries.length) {
+            body.innerHTML = '';
+            empty.style.display = '';
+            return;
+        }
+        empty.style.display = 'none';
+        body.innerHTML = topQueries.map((query) => `
+            <tr>
+                <td><code class="sql-query">${query.query}</code></td>
+                <td>${query.count}</td>
+                <td class="latency-ms ${latencyClass(query.avgMs)}">${formatLatency(query.avgMs)}</td>
+                <td class="latency-ms ${latencyClass(query.maxMs)}">${formatLatency(query.maxMs)}</td>
+                <td class="latency-ms ${latencyClass(query.totalMs)}">${formatLatency(query.totalMs)}</td>
+            </tr>
+        `).join('');
+        highlightSQLIn(body);
+    }
+
+    function renderPerf(perf) {
+        document.getElementById('total-queries').textContent = String(perf.totalQueries || 0);
+        renderHistogram(perf.histogram || []);
+        renderTopQueries(perf.topQueries || []);
+    }
+
+    function renderStorageList(items, withProjectName) {
+        if (!items.length) {
+            return '<div class="empty">No storage data yet.</div>';
+        }
+        return `<div class="storage-list">${items.map((item) => `
+            <div class="storage-item">
+                <div>
+                    <div class="storage-name">${item.name}</div>
+                    ${withProjectName ? `<div class="storage-meta">${item.projectName || ''}</div>` : ''}
+                </div>
+                <div class="storage-size">${formatBytes(item.bytes || 0)}</div>
+            </div>
+        `).join('')}</div>`;
+    }
+
+    async function loadStorageUsage() {
+        try {
+            const response = await fetch('/api/perf/storage');
+            if (!response.ok) {
+                throw new Error(`storage request failed: ${response.status}`);
+            }
+            const payload = await response.json();
+            document.getElementById('storage-projects').innerHTML = renderStorageList(payload.topProjects || [], false);
+            document.getElementById('storage-runs').innerHTML = renderStorageList(payload.topRuns || [], true);
+        } catch (err) {
+            console.error(err);
+            document.getElementById('storage-projects').innerHTML = '<div class="empty">Failed to load.</div>';
+            document.getElementById('storage-runs').innerHTML = '<div class="empty">Failed to load.</div>';
+        }
+    }
+
+    async function refreshPerf() {
+        try {
+            const response = await fetch('/api/perf');
+            if (!response.ok) {
+                throw new Error(`perf request failed: ${response.status}`);
+            }
+            renderPerf(await response.json());
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    highlightSQLIn();
+    renderPerf(initialPerf);
+    loadStorageUsage();
 
     const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
     const autoRefreshInterval = document.getElementById('auto-refresh-interval');
@@ -190,7 +342,7 @@
             const seconds = Math.max(1, Math.min(3600, parseInt(autoRefreshInterval.value || '3', 10) || 3));
             autoRefreshInterval.value = String(seconds);
             autoRefreshTimer = setInterval(() => {
-                window.location.reload();
+                refreshPerf();
             }, seconds * 1000);
         }
     }
