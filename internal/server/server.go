@@ -105,6 +105,7 @@ func (s *Server) setupRoutes() {
 		r.Get("/projects/{projectID}/runs", s.apiListRuns)
 		r.Get("/projects/{projectID}/history", s.apiGetProjectHistory)
 		r.Get("/perf", s.apiGetPerf)
+		r.Get("/perf/storage/approx", s.apiGetPerfStorageApprox)
 		r.Get("/perf/storage", s.apiGetPerfStorage)
 		r.Get("/runs/{runID}", s.apiGetRun)
 		r.Get("/runs/{runID}/history", s.apiGetHistory)
@@ -203,6 +204,11 @@ func (s *Server) apiGetPerf(w http.ResponseWriter, r *http.Request) {
 func (s *Server) apiGetPerfStorage(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(s.store.StorageUsageSnapshot())
+}
+
+func (s *Server) apiGetPerfStorageApprox(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(s.store.ApproximateRunStorageUsageSnapshot())
 }
 
 func (s *Server) apiDeleteRun(w http.ResponseWriter, r *http.Request) {

@@ -279,7 +279,7 @@
         renderTopQueries(perf.topQueries || []);
     }
 
-    function renderStorageList(items, withProjectName) {
+    function renderStorageList(items, withProjectName, approximate) {
         if (!items.length) {
             return '<div class="empty">No storage data yet.</div>';
         }
@@ -289,9 +289,22 @@
                     <div class="storage-name">${item.name}</div>
                     ${withProjectName ? `<div class="storage-meta">${item.projectName || ''}</div>` : ''}
                 </div>
-                <div class="storage-size">${formatBytes(item.bytes || 0)}</div>
+                <div class="storage-size">${approximate ? 'approx. ' : ''}${formatBytes(item.bytes || 0)}</div>
             </div>
         `).join('')}</div>`;
+    }
+
+    async function loadApproximateStorageUsage() {
+        try {
+            const response = await fetch('/api/perf/storage/approx');
+            if (!response.ok) {
+                throw new Error(`approx storage request failed: ${response.status}`);
+            }
+            const payload = await response.json();
+            document.getElementById('storage-runs').innerHTML = renderStorageList(payload.topRuns || [], true, true);
+        } catch (err) {
+            console.error(err);
+        }
     }
 
     async function loadStorageUsage() {
@@ -301,12 +314,18 @@
                 throw new Error(`storage request failed: ${response.status}`);
             }
             const payload = await response.json();
-            document.getElementById('storage-projects').innerHTML = renderStorageList(payload.topProjects || [], false);
-            document.getElementById('storage-runs').innerHTML = renderStorageList(payload.topRuns || [], true);
+            document.getElementById('storage-projects').innerHTML = renderStorageList(payload.topProjects || [], false, false);
+            document.getElementById('storage-runs').innerHTML = renderStorageList(payload.topRuns || [], true, false);
         } catch (err) {
             console.error(err);
-            document.getElementById('storage-projects').innerHTML = '<div class="empty">Failed to load.</div>';
-            document.getElementById('storage-runs').innerHTML = '<div class="empty">Failed to load.</div>';
+            const projects = document.getElementById('storage-projects');
+            const runs = document.getElementById('storage-runs');
+            if (!projects.innerHTML.trim() || projects.textContent.trim() === 'Loading...') {
+                projects.innerHTML = '<div class="empty">Failed to load.</div>';
+            }
+            if (!runs.innerHTML.trim() || runs.textContent.trim() === 'Loading...') {
+                runs.innerHTML = '<div class="empty">Failed to load.</div>';
+            }
         }
     }
 
@@ -322,9 +341,14 @@
         }
     }
 
+    async function loadStoragePanels() {
+        await loadApproximateStorageUsage();
+        await loadStorageUsage();
+    }
+
     highlightSQLIn();
     renderPerf(initialPerf);
-    loadStorageUsage();
+    loadStoragePanels();
 
     const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
     const autoRefreshInterval = document.getElementById('auto-refresh-interval');
