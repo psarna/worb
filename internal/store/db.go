@@ -51,12 +51,13 @@ func (ft flexTime) Value() (driver.Value, error) {
 
 type DB struct {
 	*sql.DB
-	Engine  string
-	wal     *WAL
-	dataDir string
-	ctx     context.Context
-	cancel  context.CancelFunc
-	sqlPerf *sqlPerfTracker
+	Engine       string
+	wal          *WAL
+	dataDir      string
+	ctx          context.Context
+	cancel       context.CancelFunc
+	sqlPerf      *sqlPerfTracker
+	storageCache *storageUsageCache
 }
 
 type SQLPerfTopQuery struct {
@@ -260,7 +261,7 @@ func New(dataDir, engine string) (*DB, error) {
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	store := &DB{DB: db, Engine: engine, dataDir: dataDir, ctx: ctx, cancel: cancel, sqlPerf: newSQLPerfTracker()}
+	store := &DB{DB: db, Engine: engine, dataDir: dataDir, ctx: ctx, cancel: cancel, sqlPerf: newSQLPerfTracker(), storageCache: newStorageUsageCache()}
 	if err := store.migrate(); err != nil {
 		db.Close()
 		cancel()

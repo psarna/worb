@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Performance Insights</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/svg+xml" href="/static/worb.svg">
     <style>
         body { max-width: 1100px; margin: 0 auto; padding: 24px; }
         h1 { margin-top: 0; }
@@ -294,11 +295,34 @@
         `).join('')}</div>`;
     }
 
-    async function loadStorageUsage() {
+    function renderCachedStorageUsage(payload) {
+        const projects = payload.topProjects || [];
+        const runs = payload.topRuns || [];
+        if (projects.length) {
+            document.getElementById('storage-projects').innerHTML = renderStorageList(projects, false);
+        }
+        if (runs.length) {
+            document.getElementById('storage-runs').innerHTML = renderStorageList(runs, true);
+        }
+    }
+
+    async function loadCachedStorageUsage() {
         try {
             const response = await fetch('/api/perf/storage');
             if (!response.ok) {
-                throw new Error(`storage request failed: ${response.status}`);
+                throw new Error(`cached storage request failed: ${response.status}`);
+            }
+            renderCachedStorageUsage(await response.json());
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+    async function loadFreshStorageUsage() {
+        try {
+            const response = await fetch('/api/perf/storage/fresh');
+            if (!response.ok) {
+                throw new Error(`fresh storage request failed: ${response.status}`);
             }
             const payload = await response.json();
             document.getElementById('storage-projects').innerHTML = renderStorageList(payload.topProjects || [], false);
@@ -330,7 +354,8 @@
 
     highlightSQLIn();
     renderPerf(initialPerf);
-    loadStorageUsage();
+    loadCachedStorageUsage();
+    loadFreshStorageUsage();
 
     const autoRefreshToggle = document.getElementById('auto-refresh-toggle');
     const autoRefreshInterval = document.getElementById('auto-refresh-interval');

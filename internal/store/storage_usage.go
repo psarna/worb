@@ -1,6 +1,9 @@
 package store
 
-import "sort"
+import (
+	"sort"
+	"sync"
+)
 
 type StorageUsage struct {
 	ID          string `json:"id"`
@@ -15,7 +18,55 @@ type StorageUsageSnapshot struct {
 	TopRuns     []StorageUsage `json:"topRuns"`
 }
 
-func (db *DB) StorageUsageSnapshot() StorageUsageSnapshot {
+type storageUsageCache struct {
+	mu       sync.Mutex
+	snapshot StorageUsageSnapshot
+	refresh  chan struct{}
+}
+
+func newStorageUsageCache() *storageUsageCache {
+	return &storageUsageCache{}
+}
+
+func (db *DB) CachedStorageUsageSnapshot() StorageUsageSnapshot {
+	if db.storageCache == nil {
+		return StorageUsageSnapshot{}
+	}
+	db.storageCache.mu.Lock()
+	defer db.storageCache.mu.Unlock()
+	return cloneStorageUsageSnapshot(db.storageCache.snapshot)
+}
+
+func (db *DB) FreshStorageUsageSnapshot() StorageUsageSnapshot {
+	if db.storageCache == nil {
+		return db.computeStorageUsageSnapshot()
+	}
+
+	db.storageCache.mu.Lock()
+	if ch := db.storageCache.refresh; ch != nil {
+		db.storageCache.mu.Unlock()
+		<-ch
+		return db.CachedStorageUsageSnapshot()
+	}
+	ch := make(chan struct{})
+	db.storageCache.refresh = ch
+	db.storageCache.mu.Unlock()
+
+	snapshot := db.computeStorageUsageSnapshot()
+
+	db.storageCache.mu.Lock()
+	if len(snapshot.TopProjects) > 0 || len(snapshot.TopRuns) > 0 {
+		db.storageCache.snapshot = cloneStorageUsageSnapshot(snapshot)
+	}
+	close(ch)
+	db.storageCache.refresh = nil
+	cached := cloneStorageUsageSnapshot(db.storageCache.snapshot)
+	db.storageCache.mu.Unlock()
+
+	return cached
+}
+
+func (db *DB) computeStorageUsageSnapshot() StorageUsageSnapshot {
 	topProjects, topRuns := db.topStorageUsage()
 	return StorageUsageSnapshot{
 		TopProjects: topProjects,
@@ -162,4 +213,15 @@ func storageUsageSnapshotFromRows(rows interface {
 		TopProjects: projects,
 		TopRuns:     runs,
 	}
+}
+
+func cloneStorageUsageSnapshot(snapshot StorageUsageSnapshot) StorageUsageSnapshot {
+	cloned := StorageUsageSnapshot{}
+	if len(snapshot.TopProjects) > 0 {
+		cloned.TopProjects = append([]StorageUsage(nil), snapshot.TopProjects...)
+	}
+	if len(snapshot.TopRuns) > 0 {
+		cloned.TopRuns = append([]StorageUsage(nil), snapshot.TopRuns...)
+	}
+	return cloned
 }
