@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>worb: architecture</title>
+    <meta name="description" content="Architecture overview of worb, a single-process wandb-compatible experiment tracking server">
+    <meta name="author" content="Piotr Sarna">
+    <meta property="og:title" content="worb: architecture">
+    <meta property="og:description" content="Architecture overview of worb, a single-process wandb-compatible experiment tracking server">
+    <meta property="og:image" content="https://worb.cloud/img/banner.png">
+    <meta property="og:url" content="https://worb.cloud/arch.html">
+    <meta property="og:type" content="website">
+    <link rel="icon" type="image/svg+xml" href="worb.svg">
+    <style>
+        :root {
+            --bg: #0d1117;
+            --bg-alt: #131920;
+            --bg-alt2: #101720;
+            --surface: #161b22;
+            --border: #30363d;
+            --text: #e6edf3;
+            --text-secondary: #8b949e;
+            --accent: #3B82F6;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+
+        .section {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 24px;
+        }
+
+        .section--hero { background: var(--bg); }
+        .section--layers { background: var(--bg-alt); }
+        .section--wal { background: var(--bg-alt2); }
+        .section--storage { background: var(--bg-alt); }
+        .section--compat { background: var(--bg-alt2); }
+
+        .hero {
+            display: flex;
+            align-items: baseline;
+            gap: 16px;
+            margin-bottom: 16px;
+        }
+
+        .hero .back-link {
+            margin-left: 40px;
+            position: relative;
+            bottom: 0.75em;
+        }
+
+        .logo {
+            width: 112px;
+            height: 112px;
+            align-self: center;
+        }
+
+        h1 {
+            font-size: 64px;
+            font-weight: 700;
+            letter-spacing: -1px;
+        }
+
+        h1 span { color: var(--accent); }
+
+        h2 {
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            letter-spacing: -0.5px;
+        }
+
+        .tagline {
+            font-size: 20px;
+            color: var(--text-secondary);
+            max-width: 640px;
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .content {
+            max-width: 640px;
+            width: 100%;
+        }
+
+        .content p {
+            font-size: 15px;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+            line-height: 1.7;
+        }
+
+        .content p strong {
+            color: var(--text);
+        }
+
+        .content code {
+            font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+            font-size: 13px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px 6px;
+        }
+
+        .features {
+            max-width: 640px;
+            margin-bottom: 16px;
+            text-align: left;
+        }
+
+        .features > li {
+            font-size: 17px;
+            color: var(--text);
+            font-weight: 600;
+            margin-bottom: 4px;
+            list-style: disc;
+            margin-left: 20px;
+        }
+
+        .features > li:not(:first-child) {
+            margin-top: 16px;
+        }
+
+        .features ul {
+            margin: 4px 0 0 20px;
+            list-style: none;
+        }
+
+        .features ul li {
+            font-size: 14px;
+            color: var(--text-secondary);
+            font-weight: 400;
+            line-height: 1.7;
+        }
+
+        .features ul li::before {
+            content: "– ";
+            color: var(--accent);
+        }
+
+        .features code {
+            font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+            font-size: 13px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px 6px;
+        }
+
+        blockquote {
+            max-width: 640px;
+            text-align: center;
+            font-style: italic;
+            color: var(--text-secondary);
+            border-left: 3px solid var(--accent);
+            padding: 16px 24px;
+            margin-bottom: 48px;
+            font-size: 15px;
+            line-height: 1.7;
+        }
+
+        .diagram-wrap {
+            max-width: 640px;
+            width: 100%;
+            margin-bottom: 32px;
+        }
+
+        .diagram-wrap svg {
+            width: 100%;
+            height: auto;
+        }
+
+        .github-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 24px;
+            color: var(--text);
+            text-decoration: none;
+            font-size: 15px;
+            font-weight: 500;
+            transition: border-color 0.15s;
+        }
+
+        .github-link:hover {
+            border-color: var(--accent);
+            text-decoration: none;
+        }
+
+        .github-link svg {
+            width: 20px;
+            height: 20px;
+            fill: var(--text);
+        }
+
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 16px;
+            color: var(--text);
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+            transition: border-color 0.15s;
+        }
+
+        .back-link:hover {
+            border-color: var(--accent);
+        }
+    </style>
+</head>
+<body>
+    <div class="section section--hero">
+    <div class="hero">
+    <svg class="logo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+        <circle cx="50" cy="50" r="40" fill="none" stroke="#3B82F6" stroke-width="5.0"/>
+        <path d="M14.20 32.16 L14.47 31.69 L14.77 31.22 L15.11 30.75 L15.49 30.29 L15.89 29.84 L16.33 29.39 L16.81 28.94 L17.32 28.51 L17.85 28.08 L18.43 27.65 L19.03 27.24 L19.66 26.83 L20.32 26.43 L21.02 26.04 L21.74 25.66 L22.48 25.29 L23.26 24.93 L24.06 24.58 L24.89 24.24 L25.74 23.92 L26.62 23.60 L27.52 23.29 L28.44 23.00 L29.38 22.72 L30.34 22.46 L31.33 22.20 L32.33 21.96 L33.35 21.73 L34.38 21.52 L35.43 21.32 L36.50 21.13 L37.57 20.96 L38.66 20.80 L39.77 20.66 L40.88 20.53 L42.00 20.42 L43.13 20.32 L44.26 20.23 L45.40 20.16 L46.55 20.11 L47.70 20.07 L48.85 20.05 L50.00 20.04 L51.15 20.05 L52.30 20.07 L53.45 20.11 L54.60 20.16 L55.74 20.23 L56.87 20.32 L58.00 20.42 L59.12 20.53 L60.23 20.66 L61.34 20.80 L62.43 20.96 L63.50 21.13 L64.57 21.32 L65.62 21.52 L66.65 21.73 L67.67 21.96 L68.67 22.20 L69.66 22.46 L70.62 22.72 L71.56 23.00 L72.48 23.29 L73.38 23.60 L74.26 23.92 L75.11 24.24 L75.94 24.58 L76.74 24.93 L77.52 25.29 L78.26 25.66 L78.98 26.04 L79.68 26.43 L80.34 26.83 L80.97 27.24 L81.57 27.65 L82.15 28.08 L82.68 28.51 L83.19 28.94 L83.67 29.39 L84.11 29.84 L84.51 30.29 L84.89 30.75 L85.23 31.22 L85.53 31.69 L85.80 32.16" fill="none" stroke="#3B82F6" stroke-width="5.0" stroke-linecap="round"/>
+        <path d="M13.97 67.36 L13.77 66.88 L13.61 66.40 L13.48 65.91 L13.39 65.43 L13.34 64.94 L13.32 64.46 L13.34 63.97 L13.39 63.48 L13.48 63.00 L13.61 62.51 L13.77 62.03 L13.97 61.55 L14.20 61.07 L14.47 60.60 L14.77 60.13 L15.11 59.66 L15.49 59.20 L15.89 58.75 L16.33 58.30 L16.81 57.85 L17.32 57.42 L17.85 56.99 L18.43 56.56 L19.03 56.15 L19.66 55.74 L20.32 55.34 L21.02 54.95 L21.74 54.57 L22.48 54.20 L23.26 53.84 L24.06 53.49 L24.89 53.15 L25.74 52.83 L26.62 52.51 L27.52 52.21 L28.44 51.91 L29.38 51.63 L30.34 51.37 L31.33 51.11 L32.33 50.87 L33.35 50.64 L34.38 50.43 L35.43 50.23 L36.50 50.04 L37.57 49.87 L38.66 49.71 L39.77 49.57 L40.88 49.44 L42.00 49.33 L43.13 49.23 L44.26 49.14 L45.40 49.08 L46.55 49.02 L47.70 48.98 L48.85 48.96 L50.00 48.95 L51.15 48.96 L52.30 48.98 L53.45 49.02 L54.60 49.08 L55.74 49.14 L56.87 49.23 L58.00 49.33 L59.12 49.44 L60.23 49.57 L61.34 49.71 L62.43 49.87 L63.50 50.04 L64.57 50.23 L65.62 50.43 L66.65 50.64 L67.67 50.87 L68.67 51.11 L69.66 51.37 L70.62 51.63 L71.56 51.91 L72.48 52.21 L73.38 52.51 L74.26 52.83 L75.11 53.15 L75.94 53.49 L76.74 53.84 L77.52 54.20 L78.26 54.57 L78.98 54.95 L79.68 55.34 L80.34 55.74 L80.97 56.15 L81.57 56.56 L82.15 56.99 L82.68 57.42 L83.19 57.85 L83.67 58.30 L84.11 58.75 L84.51 59.20 L84.89 59.66 L85.23 60.13 L85.53 60.60 L85.80 61.07 L86.03 61.55 L86.23 62.03 L86.39 62.51 L86.52 63.00 L86.61 63.48 L86.66 63.97 L86.68 64.46 L86.66 64.94 L86.61 65.43 L86.52 65.91 L86.39 66.40 L86.23 66.88 L86.03 67.36" fill="none" stroke="#3B82F6" stroke-width="5.0" stroke-linecap="round"/>
+        <path d="M59.64 11.18 L60.18 11.34 L60.72 11.55 L61.24 11.79 L61.76 12.07 L62.26 12.38 L62.75 12.74 L63.23 13.13 L63.69 13.55 L64.14 14.01 L64.58 14.51 L65.00 15.04 L65.41 15.61 L65.80 16.21 L66.18 16.85 L66.54 17.51 L66.89 18.21 L67.21 18.94 L67.53 19.71 L67.82 20.50 L68.10 21.32 L68.36 22.17 L68.60 23.04 L68.82 23.95 L69.02 24.87 L69.21 25.83 L69.37 26.80 L69.52 27.80 L69.65 28.83 L69.75 29.87 L69.84 30.93 L69.91 32.01 L69.96 33.11 L69.99 34.23 L70.00 35.36 L69.99 36.51 L69.96 37.67 L69.91 38.84 L69.84 40.02 L69.75 41.21 L69.65 42.41 L69.52 43.62 L69.37 44.84 L69.21 46.06 L69.02 47.28 L68.82 48.51 L68.60 49.73 L68.36 50.96 L68.10 52.19 L67.82 53.41 L67.53 54.64 L67.21 55.85 L66.89 57.06 L66.54 58.27 L66.18 59.46 L65.80 60.65 L65.41 61.83 L65.00 62.99 L64.58 64.14 L64.14 65.28 L63.69 66.41 L63.23 67.51 L62.75 68.60 L62.26 69.67 L61.76 70.72 L61.24 71.75 L60.72 72.76 L60.18 73.75 L59.64 74.72 L59.08 75.65 L58.52 76.57 L57.94 77.46 L57.36 78.32 L56.77 79.15 L56.18 79.95 L55.58 80.73 L54.97 81.47 L54.36 82.19 L53.75 82.87 L53.13 83.52 L52.51 84.13 L51.88 84.71 L51.26 85.26 L50.63 85.77 L50.00 86.25 L49.37 86.69 L48.74 87.10 L48.12 87.47 L47.49 87.80 L46.87 88.10 L46.25 88.35 L45.64 88.57 L45.03 88.75 L44.42 88.90 L43.82 89.00 L43.23 89.07 L42.64 89.10 L42.06 89.08 L41.48 89.04 L40.92 88.95" fill="none" stroke="#3B82F6" stroke-width="5.0" stroke-linecap="round"/>
+        <path d="M89.98 51.14 L89.92 52.28 L89.82 53.41 L89.68 54.54 L89.51 55.67 L89.29 56.79 L89.04 57.91 L88.74 59.02 L88.41 60.11 L88.04 61.20 L87.64 62.28 L87.19 63.35 L86.71 64.40 L86.19 65.44 L85.64 66.46 L85.05 67.46 L84.43 68.45 L83.77 69.42 L83.08 70.38 L82.36 71.31 L81.61 72.22 L80.82 73.11 L80.00 73.97 L79.16 74.82 L78.28 75.63 L77.38 76.43 L76.45 77.19 L75.50 77.93 L74.52 78.64 L73.51 79.33 L72.48 79.98 L71.43 80.61 L70.36 81.20 L69.27 81.77 L68.16 82.30 L67.03 82.80 L65.89 83.27 L64.72 83.71 L63.55 84.11 L62.36 84.48 L61.16 84.81 L59.95 85.11 L58.73 85.38 L57.50 85.61 L56.26 85.81 L55.01 85.97 L53.76 86.09 L52.51 86.18 L51.26 86.23 L50.00 86.25 L48.74 86.23 L47.49 86.18 L46.24 86.09 L44.99 85.97 L43.74 85.81 L42.50 85.61 L41.27 85.38 L40.05 85.11 L38.84 84.81 L37.64 84.48 L36.45 84.11 L35.28 83.71 L34.11 83.27 L32.97 82.80 L31.84 82.30 L30.73 81.77 L29.64 81.20 L28.57 80.61 L27.52 79.98 L26.49 79.33 L25.48 78.64 L24.50 77.93 L23.55 77.19 L22.62 76.43 L21.72 75.63 L20.84 74.82 L20.00 73.97 L19.18 73.11 L18.39 72.22 L17.64 71.31 L16.92 70.38 L16.23 69.42 L15.57 68.45 L14.95 67.46 L14.36 66.46 L13.81 65.44 L13.29 64.40 L12.81 63.35 L12.36 62.28 L11.96 61.20 L11.59 60.11 L11.26 59.02 L10.96 57.91 L10.71 56.79 L10.49 55.67 L10.32 54.54 L10.18 53.41 L10.08 52.28 L10.02 51.14 L10.00 50.00" fill="none" stroke="#3B82F6" stroke-width="5.0" stroke-linecap="round"/>
+        <path d="M59.08 88.95 L58.52 89.04 L57.94 89.08 L57.36 89.10 L56.77 89.07 L56.18 89.00 L55.58 88.90 L54.97 88.75 L54.36 88.57 L53.75 88.35 L53.13 88.10 L52.51 87.80 L51.88 87.47 L51.26 87.10 L50.63 86.69 L50.00 86.25 L49.37 85.77 L48.74 85.26 L48.12 84.71 L47.49 84.13 L46.87 83.52 L46.25 82.87 L45.64 82.19 L45.03 81.47 L44.42 80.73 L43.82 79.95 L43.23 79.15 L42.64 78.32 L42.06 77.46 L41.48 76.57 L40.92 75.65 L40.36 74.72 L39.82 73.75 L39.28 72.76 L38.76 71.75 L38.24 70.72 L37.74 69.67 L37.25 68.60 L36.77 67.51 L36.31 66.41 L35.86 65.28 L35.42 64.14 L35.00 62.99 L34.59 61.83 L34.20 60.65 L33.82 59.46 L33.46 58.27 L33.11 57.06 L32.79 55.85 L32.47 54.64 L32.18 53.41 L31.90 52.19 L31.64 50.96 L31.40 49.73 L31.18 48.51 L30.98 47.28 L30.79 46.06 L30.63 44.84 L30.48 43.62 L30.35 42.41 L30.25 41.21 L30.16 40.02 L30.09 38.84 L30.04 37.67 L30.01 36.51 L30.00 35.36 L30.01 34.23 L30.04 33.11 L30.09 32.01 L30.16 30.93 L30.25 29.87 L30.35 28.83 L30.48 27.80 L30.63 26.80 L30.79 25.83 L30.98 24.87 L31.18 23.95 L31.40 23.04 L31.64 22.17 L31.90 21.32 L32.18 20.50 L32.47 19.71 L32.79 18.94 L33.11 18.21 L33.46 17.51 L33.82 16.85 L34.20 16.21 L34.59 15.61 L35.00 15.04 L35.42 14.51 L35.86 14.01 L36.31 13.55 L36.77 13.13 L37.25 12.74 L37.74 12.38 L38.24 12.07 L38.76 11.79 L39.28 11.55 L39.82 11.34 L40.36 11.18" fill="none" stroke="#3B82F6" stroke-width="5.0" stroke-linecap="round"/>
+    </svg>
+    <h1><span>worb</span> architecture</h1>
+    <a class="back-link" href="/">&#8592; back</a>
+    </div>
+
+    <p class="tagline">A single executable, a single SQLite file, zero external dependencies.</p>
+
+    <!-- Main architecture diagram -->
+    <div class="diagram-wrap">
+    <svg viewBox="0 0 640 520" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#3B82F6"/>
+            </marker>
+            <marker id="arrow-dim" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#8b949e"/>
+            </marker>
+        </defs>
+
+        <!-- wandb client box -->
+        <rect x="200" y="10" width="240" height="44" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+        <text x="320" y="38" text-anchor="middle" fill="#8b949e" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="14" font-weight="500">wandb Python client</text>
+
+        <!-- Arrow down -->
+        <line x1="320" y1="54" x2="320" y2="90" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="332" y="78" fill="#8b949e" font-family="'SF Mono', monospace" font-size="10">HTTP</text>
+
+        <!-- Big worb box -->
+        <rect x="60" y="94" width="520" height="310" rx="12" fill="none" stroke="#3B82F6" stroke-width="2" stroke-dasharray="6 3" opacity="0.5"/>
+        <text x="90" y="120" fill="#3B82F6" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="16" font-weight="700">worb</text>
+        <text x="134" y="120" fill="#8b949e" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="12">single Go binary</text>
+
+        <!-- Three API boxes -->
+        <rect x="100" y="138" width="140" height="44" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+        <text x="170" y="165" text-anchor="middle" fill="#e6edf3" font-family="'SF Mono', monospace" font-size="12" font-weight="600">file_stream</text>
+
+        <rect x="260" y="138" width="120" height="44" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+        <text x="320" y="165" text-anchor="middle" fill="#e6edf3" font-family="'SF Mono', monospace" font-size="12" font-weight="600">GraphQL</text>
+
+        <rect x="400" y="138" width="140" height="44" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+        <text x="470" y="165" text-anchor="middle" fill="#e6edf3" font-family="'SF Mono', monospace" font-size="12" font-weight="600">REST API</text>
+
+        <!-- Arrows from APIs down to WAL -->
+        <line x1="170" y1="182" x2="170" y2="210" stroke="#8b949e" stroke-width="1"/>
+        <line x1="320" y1="182" x2="320" y2="210" stroke="#8b949e" stroke-width="1"/>
+        <line x1="470" y1="182" x2="470" y2="210" stroke="#8b949e" stroke-width="1"/>
+        <!-- Horizontal merge line -->
+        <line x1="170" y1="210" x2="470" y2="210" stroke="#8b949e" stroke-width="1"/>
+        <line x1="320" y1="210" x2="320" y2="230" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <!-- WAL box -->
+        <rect x="220" y="234" width="200" height="44" rx="6" fill="#161b22" stroke="#3B82F6" stroke-width="1.5"/>
+        <text x="320" y="261" text-anchor="middle" fill="#3B82F6" font-family="'SF Mono', monospace" font-size="13" font-weight="700">Write-Ahead Log</text>
+
+        <!-- Arrow WAL to Store -->
+        <line x1="320" y1="278" x2="320" y2="308" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#arrow)"/>
+        <text x="332" y="298" fill="#8b949e" font-family="'SF Mono', monospace" font-size="10">batch</text>
+
+        <!-- Store box -->
+        <rect x="220" y="312" width="200" height="44" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+        <text x="320" y="339" text-anchor="middle" fill="#e6edf3" font-family="'SF Mono', monospace" font-size="13" font-weight="600">Store</text>
+
+        <!-- Dashboard box on the right -->
+        <rect x="440" y="312" width="120" height="44" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+        <text x="500" y="339" text-anchor="middle" fill="#e6edf3" font-family="'SF Mono', monospace" font-size="12" font-weight="600">Dashboard</text>
+        <text x="500" y="351" text-anchor="middle" fill="#8b949e" font-family="'SF Mono', monospace" font-size="9">go:embed</text>
+
+        <!-- Arrow from REST to Dashboard -->
+        <line x1="500" y1="182" x2="500" y2="312" stroke="#30363d" stroke-width="1" stroke-dasharray="4 3"/>
+
+        <!-- File store box on the left -->
+        <rect x="80" y="312" width="120" height="44" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+        <text x="140" y="339" text-anchor="middle" fill="#e6edf3" font-family="'SF Mono', monospace" font-size="12" font-weight="600">File Store</text>
+        <text x="140" y="351" text-anchor="middle" fill="#8b949e" font-family="'SF Mono', monospace" font-size="9">~/.worb/files/</text>
+
+        <!-- Arrow from Store to File Store -->
+        <line x1="220" y1="334" x2="200" y2="334" stroke="#30363d" stroke-width="1" stroke-dasharray="4 3"/>
+
+        <!-- Arrow Store down to SQLite -->
+        <line x1="320" y1="356" x2="320" y2="410" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#arrow)"/>
+
+        <!-- SQLite cylinder -->
+        <ellipse cx="320" cy="422" rx="80" ry="12" fill="#161b22" stroke="#3B82F6" stroke-width="1.5"/>
+        <rect x="240" y="422" width="160" height="50" fill="#161b22" stroke="none"/>
+        <line x1="240" y1="422" x2="240" y2="472" stroke="#3B82F6" stroke-width="1.5"/>
+        <line x1="400" y1="422" x2="400" y2="472" stroke="#3B82F6" stroke-width="1.5"/>
+        <ellipse cx="320" cy="472" rx="80" ry="12" fill="#161b22" stroke="#3B82F6" stroke-width="1.5"/>
+        <text x="320" y="453" text-anchor="middle" fill="#e6edf3" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif" font-size="15" font-weight="700">SQLite</text>
+        <text x="320" y="468" text-anchor="middle" fill="#8b949e" font-family="'SF Mono', monospace" font-size="10">~/.worb/worb.db</text>
+    </svg>
+    </div>
+    </div>
+
+    <div class="section section--layers">
+    <h2>Layers</h2>
+
+    <ul class="features">
+        <li>Ingestion layer
+            <ul>
+                <li>the <code>file_stream</code> endpoint accepts metrics from the wandb Python client</li>
+                <li>each request carries JSON with scalars, histograms, events, and console logs for a run</li>
+                <li>data is parsed and passed to the write-ahead log without touching SQLite on the hot path</li>
+            </ul>
+        </li>
+        <li>Write-Ahead Log (WAL)
+            <ul>
+                <li>an application-level WAL that buffers incoming rows in an append-only file on disk</li>
+                <li>a background goroutine drains the WAL in batches and writes to SQLite</li>
+                <li>decouples ingestion throughput from database write speed</li>
+                <li>allows the HTTP handler to return immediately, keeping the wandb client happy</li>
+            </ul>
+        </li>
+        <li>Store
+            <ul>
+                <li>wraps a single SQLite database (or DuckDB, if configured)</li>
+                <li>tables: <code>projects</code>, <code>runs</code>, <code>run_steps</code>, <code>history</code>, <code>events</code>, <code>console_logs</code>, <code>files</code>, <code>artifacts</code></li>
+                <li>history rows store each metric key/value as a separate row for efficient per-key queries</li>
+                <li>batch inserts with transactions for throughput, read queries use streaming to keep memory flat</li>
+            </ul>
+        </li>
+        <li>API layer
+            <ul>
+                <li>a chi router serves three API surfaces: wandb-compatible GraphQL, a REST API for the dashboard, and the file_stream protocol</li>
+                <li>GraphQL resolves viewer, project, and run queries so <code>wandb.init()</code> and <code>wandb.finish()</code> work as expected</li>
+                <li>REST endpoints stream history as newline-delimited JSON for chart rendering</li>
+            </ul>
+        </li>
+        <li>Dashboard
+            <ul>
+                <li>an embedded SPA (the <code>ui/</code> package) compiled into the binary via <code>go:embed</code></li>
+                <li>renders metric charts, histograms, run tables, console logs, and a SQL console</li>
+                <li>no Node.js build step, no npm, just static assets baked into the Go binary</li>
+            </ul>
+        </li>
+    </ul>
+
+    <blockquote>
+        Everything runs in one process. There is no message queue, no cache layer, no container orchestration. The WAL file and the SQLite database are the only state on disk.
+    </blockquote>
+    </div>
+
+    <div class="section section--wal">
+    <h2>The WAL</h2>
+
+    <div class="content">
+    <p>
+        The wandb client streams metrics over HTTP at high frequency. Writing each row directly to SQLite
+        would serialize every request behind a database lock, so worb interposes an application-level
+        write-ahead log.
+    </p>
+    <p>
+        Incoming data is appended to a single WAL file on disk (<code>~/.worb/wal.jsonl</code>).
+        A background goroutine wakes up every <strong>500 ms</strong> (or when a batch reaches
+        <strong>50,000 items</strong>), reads a chunk from the WAL, and flushes it to SQLite in a single
+        transaction. The WAL file is compacted once it exceeds <strong>1 GB</strong>.
+    </p>
+    <p>
+        This design means the HTTP handler only does an <code>append()</code> to a file and returns.
+        SQLite writes happen in the background, batched and ordered, with no contention on the ingestion path.
+    </p>
+    </div>
+
+    <!-- WAL flow diagram -->
+    <div class="diagram-wrap">
+    <svg viewBox="0 0 640 200" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <marker id="arr2" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#3B82F6"/>
+            </marker>
+        </defs>
+
+        <!-- Hot path -->
+        <text x="20" y="20" fill="#8b949e" font-family="'SF Mono', monospace" font-size="11" font-weight="600">HOT PATH</text>
+
+        <rect x="20" y="34" width="110" height="36" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+        <text x="75" y="57" text-anchor="middle" fill="#8b949e" font-family="'SF Mono', monospace" font-size="11">wandb.log()</text>
+
+        <line x1="130" y1="52" x2="170" y2="52" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#arr2)"/>
+
+        <rect x="174" y="34" width="130" height="36" rx="6" fill="#161b22" stroke="#3B82F6" stroke-width="1.5"/>
+        <text x="239" y="57" text-anchor="middle" fill="#3B82F6" font-family="'SF Mono', monospace" font-size="11">file_stream</text>
+
+        <line x1="304" y1="52" x2="344" y2="52" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#arr2)"/>
+
+        <rect x="348" y="34" width="130" height="36" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+        <text x="413" y="57" text-anchor="middle" fill="#e6edf3" font-family="'SF Mono', monospace" font-size="11">WAL append</text>
+
+        <line x1="478" y1="52" x2="518" y2="52" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#arr2)"/>
+
+        <rect x="522" y="34" width="100" height="36" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+        <text x="572" y="57" text-anchor="middle" fill="#58a6ff" font-family="'SF Mono', monospace" font-size="11" font-weight="600">200 OK</text>
+
+        <!-- Divider -->
+        <line x1="20" y1="95" x2="620" y2="95" stroke="#30363d" stroke-width="1" stroke-dasharray="4 3"/>
+
+        <!-- Background path -->
+        <text x="20" y="125" fill="#8b949e" font-family="'SF Mono', monospace" font-size="11" font-weight="600">BACKGROUND</text>
+
+        <rect x="100" y="140" width="130" height="36" rx="6" fill="#161b22" stroke="#3B82F6" stroke-width="1.5"/>
+        <text x="165" y="163" text-anchor="middle" fill="#3B82F6" font-family="'SF Mono', monospace" font-size="11">WAL reader</text>
+
+        <line x1="230" y1="158" x2="270" y2="158" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#arr2)"/>
+
+        <rect x="274" y="140" width="130" height="36" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+        <text x="339" y="163" text-anchor="middle" fill="#e6edf3" font-family="'SF Mono', monospace" font-size="11">batch 50k rows</text>
+
+        <line x1="404" y1="158" x2="444" y2="158" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#arr2)"/>
+
+        <rect x="448" y="140" width="170" height="36" rx="6" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+        <text x="533" y="163" text-anchor="middle" fill="#e6edf3" font-family="'SF Mono', monospace" font-size="11">INSERT ... COMMIT</text>
+
+        <!-- Arrow from WAL append down to WAL reader -->
+        <path d="M 413 70 L 413 105 Q 413 115 403 115 L 175 115 Q 165 115 165 125 L 165 140" fill="none" stroke="#8b949e" stroke-width="1" stroke-dasharray="4 3" marker-end="url(#arr2)"/>
+    </svg>
+    </div>
+    </div>
+
+    <div class="section section--storage">
+    <h2>Storage</h2>
+
+    <div class="content">
+    <p>
+        All experiment data lives in a single <strong>SQLite</strong> database file at
+        <code>~/.worb/worb.db</code>. Backups are a file copy. There is no export tool, no dump
+        command, no migration to run. You can also point worb at a <strong>Turso</strong> database
+        for hosted/replicated SQLite, or DuckDB if you prefer columnar storage.
+    </p>
+    <p>
+        The schema is designed around the wandb data model: projects contain runs, runs contain
+        history rows. History is stored as <strong>one row per metric per step</strong>
+        (run_id, step, key, value) rather than one JSON blob per step. This makes per-key range
+        queries fast and avoids parsing large JSON objects on read.
+    </p>
+    <p>
+        Uploaded files (model checkpoints, artifacts) go to a flat directory on disk
+        (<code>~/.worb/files/</code>) with metadata tracked in the <code>files</code> table.
+        The file store is a simple content-addressed layout, no object storage dependency.
+    </p>
+    </div>
+
+    <!-- Data directory diagram -->
+    <div class="diagram-wrap">
+    <svg viewBox="0 0 640 210" xmlns="http://www.w3.org/2000/svg">
+        <!-- Root folder -->
+        <rect x="20" y="10" width="600" height="190" rx="10" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+        <text x="44" y="40" fill="#3B82F6" font-family="'SF Mono', monospace" font-size="14" font-weight="700">~/.worb/</text>
+
+        <!-- worb.db -->
+        <rect x="44" y="56" width="260" height="52" rx="6" fill="#0d1117" stroke="#3B82F6" stroke-width="1.5"/>
+        <!-- Cylinder icon -->
+        <ellipse cx="70" cy="74" rx="10" ry="5" fill="none" stroke="#3B82F6" stroke-width="1.2"/>
+        <line x1="60" y1="74" x2="60" y2="88" stroke="#3B82F6" stroke-width="1.2"/>
+        <line x1="80" y1="74" x2="80" y2="88" stroke="#3B82F6" stroke-width="1.2"/>
+        <ellipse cx="70" cy="88" rx="10" ry="5" fill="none" stroke="#3B82F6" stroke-width="1.2"/>
+        <text x="94" y="78" fill="#e6edf3" font-family="'SF Mono', monospace" font-size="13" font-weight="600">worb.db</text>
+        <text x="94" y="97" fill="#8b949e" font-family="'SF Mono', monospace" font-size="10">SQLite — all metadata + metrics</text>
+
+        <!-- wal.jsonl -->
+        <rect x="320" y="56" width="280" height="52" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+        <!-- File icon -->
+        <path d="M346 68 L346 96 L362 96 L362 74 L356 68 Z" fill="none" stroke="#8b949e" stroke-width="1.2"/>
+        <path d="M356 68 L356 74 L362 74" fill="none" stroke="#8b949e" stroke-width="1.2"/>
+        <text x="372" y="78" fill="#e6edf3" font-family="'SF Mono', monospace" font-size="13">wal.jsonl</text>
+        <text x="372" y="97" fill="#8b949e" font-family="'SF Mono', monospace" font-size="10">write-ahead log (transient)</text>
+
+        <!-- wal.pos -->
+        <rect x="44" y="120" width="260" height="52" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+        <path d="M70 132 L70 160 L86 160 L86 138 L80 132 Z" fill="none" stroke="#8b949e" stroke-width="1.2"/>
+        <path d="M80 132 L80 138 L86 138" fill="none" stroke="#8b949e" stroke-width="1.2"/>
+        <text x="96" y="142" fill="#e6edf3" font-family="'SF Mono', monospace" font-size="13">wal.pos</text>
+        <text x="96" y="161" fill="#8b949e" font-family="'SF Mono', monospace" font-size="10">WAL read cursor position</text>
+
+        <!-- files/ -->
+        <rect x="320" y="120" width="280" height="52" rx="6" fill="#0d1117" stroke="#30363d" stroke-width="1.5"/>
+        <!-- Folder icon -->
+        <path d="M346 138 L346 160 L366 160 L366 138 L358 138 L356 134 L346 134 Z" fill="none" stroke="#8b949e" stroke-width="1.2"/>
+        <text x="376" y="146" fill="#e6edf3" font-family="'SF Mono', monospace" font-size="13">files/</text>
+        <text x="376" y="161" fill="#8b949e" font-family="'SF Mono', monospace" font-size="10">uploaded artifacts and models</text>
+    </svg>
+    </div>
+    </div>
+
+    <div class="section section--compat">
+    <h2>Compatibility</h2>
+
+    <div class="content">
+    <p>
+        worb implements enough of the wandb server API that the standard <code>wandb</code> Python
+        client works without patches. You set <code>WANDB_BASE_URL</code> to your worb instance,
+        and <code>wandb.init()</code>, <code>wandb.log()</code>, and <code>wandb.finish()</code>
+        work as expected.
+    </p>
+    <p>
+        The GraphQL endpoint handles the handshake and metadata queries the client makes on init
+        and finish. The <code>file_stream</code> endpoint accepts the chunked metric uploads.
+        A built-in GraphQL playground is available at <code>/playground</code> for exploration.
+    </p>
+    <p>
+        The SQL console in the dashboard lets you query the underlying SQLite database directly,
+        which is useful for ad-hoc analysis that goes beyond what the charts offer.
+    </p>
+    </div>
+
+    <!-- Compatibility diagram -->
+    <div class="diagram-wrap" style="margin-bottom:48px">
+    <svg viewBox="0 0 640 160" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+            <marker id="arr3" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#3B82F6"/>
+            </marker>
+        </defs>
+
+        <!-- Python side -->
+        <rect x="20" y="20" width="180" height="120" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+        <text x="110" y="48" text-anchor="middle" fill="#e6edf3" font-family="-apple-system, sans-serif" font-size="14" font-weight="700">Your Python code</text>
+        <text x="110" y="72" text-anchor="middle" fill="#8b949e" font-family="'SF Mono', monospace" font-size="11">wandb.init()</text>
+        <text x="110" y="90" text-anchor="middle" fill="#8b949e" font-family="'SF Mono', monospace" font-size="11">wandb.log()</text>
+        <text x="110" y="108" text-anchor="middle" fill="#8b949e" font-family="'SF Mono', monospace" font-size="11">wandb.finish()</text>
+        <text x="110" y="130" text-anchor="middle" fill="#58a6ff" font-family="'SF Mono', monospace" font-size="9">WANDB_BASE_URL=...</text>
+
+        <!-- Arrow -->
+        <line x1="200" y1="80" x2="248" y2="80" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#arr3)"/>
+
+        <!-- worb side -->
+        <rect x="252" y="20" width="180" height="120" rx="8" fill="#161b22" stroke="#3B82F6" stroke-width="1.5"/>
+        <text x="342" y="48" text-anchor="middle" fill="#3B82F6" font-family="-apple-system, sans-serif" font-size="14" font-weight="700">worb</text>
+        <text x="342" y="72" text-anchor="middle" fill="#8b949e" font-family="'SF Mono', monospace" font-size="11">/graphql</text>
+        <text x="342" y="90" text-anchor="middle" fill="#8b949e" font-family="'SF Mono', monospace" font-size="11">/file_stream</text>
+        <text x="342" y="108" text-anchor="middle" fill="#8b949e" font-family="'SF Mono', monospace" font-size="11">/api/*</text>
+        <text x="342" y="130" text-anchor="middle" fill="#8b949e" font-family="'SF Mono', monospace" font-size="9">+ /playground</text>
+
+        <!-- Arrow -->
+        <line x1="432" y1="80" x2="480" y2="80" stroke="#3B82F6" stroke-width="1.5" marker-end="url(#arr3)"/>
+
+        <!-- Browser side -->
+        <rect x="484" y="20" width="140" height="120" rx="8" fill="#161b22" stroke="#30363d" stroke-width="1.5"/>
+        <text x="554" y="48" text-anchor="middle" fill="#e6edf3" font-family="-apple-system, sans-serif" font-size="14" font-weight="700">Dashboard</text>
+        <text x="554" y="72" text-anchor="middle" fill="#8b949e" font-family="'SF Mono', monospace" font-size="11">charts</text>
+        <text x="554" y="90" text-anchor="middle" fill="#8b949e" font-family="'SF Mono', monospace" font-size="11">histograms</text>
+        <text x="554" y="108" text-anchor="middle" fill="#8b949e" font-family="'SF Mono', monospace" font-size="11">SQL console</text>
+        <text x="554" y="126" text-anchor="middle" fill="#8b949e" font-family="'SF Mono', monospace" font-size="11">run logs</text>
+    </svg>
+    </div>
+
+    <a class="github-link" href="https://github.com/psarna/worb">
+        <svg viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+    </a>
+    </div>
+</body>
+</html>
