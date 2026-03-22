@@ -110,16 +110,16 @@
         <table id="runs-table">
             <thead>
                 <tr>
-                    <th>Name</th>
-                    <th>State</th>
-                    <th>Steps</th>
-                    <th>Created</th>
+                    <th data-sort-key="name" aria-sort="none">Name</th>
+                    <th data-sort-key="state" aria-sort="none">State</th>
+                    <th data-sort-key="steps" aria-sort="none">Steps</th>
+                    <th data-sort-key="created" aria-sort="none">Created</th>
                     <th></th>
                 </tr>
             </thead>
             <tbody id="runs-table-body" data-pending-pagination="1">
                 {{range .Runs}}
-                <tr onclick="location.href='/runs/{{.ID}}'" style="cursor: pointer;" data-run-id="{{.ID}}" data-run-filter="{{if .DisplayName}}{{.DisplayName}} {{end}}{{.Name}} {{.ID}} {{.State}}">
+                <tr onclick="location.href='/runs/{{.ID}}'" style="cursor: pointer;" data-run-id="{{.ID}}" data-run-filter="{{if .DisplayName}}{{.DisplayName}} {{end}}{{.Name}} {{.ID}} {{.State}}" data-sort-name="{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Name}}{{end}}" data-sort-state="{{.State}}" data-sort-steps="{{.HistoryLineCount}}" data-sort-created="{{.CreatedAt.Unix}}">
                     <td>
                         <a href="/runs/{{.ID}}">{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Name}}{{end}}</a>
                     </td>
@@ -363,6 +363,7 @@
         const table = document.getElementById('runs-table');
         if (!table) return;
         const tbody = document.getElementById('runs-table-body');
+        const sortableHeaders = Array.from(table.querySelectorAll('th[data-sort-key]'));
         const searchInput = document.getElementById('run-search');
         const countEl = document.getElementById('runs-filter-count');
         const pagers = [
@@ -386,17 +387,60 @@
         let currentPage = 1;
         let filter = '';
         let allRows = [];
+        let sortKey = '';
+        let sortDirection = 'asc';
 
         function collectRows() {
             allRows = Array.from(tbody.querySelectorAll('tr[data-run-id]'));
-            for (const row of allRows) {
+            for (let i = 0; i < allRows.length; i++) {
+                const row = allRows[i];
                 row.dataset.filterLower = (row.dataset.runFilter || '').toLowerCase();
+                if (!row.dataset.initialIndex) row.dataset.initialIndex = String(i);
             }
         }
 
         function filteredRows() {
             if (!filter) return allRows;
             return allRows.filter(row => row.dataset.filterLower.includes(filter));
+        }
+
+        function sortValue(row, key) {
+            switch (key) {
+                case 'steps':
+                case 'created':
+                    return Number(row.dataset[`sort${key[0].toUpperCase()}${key.slice(1)}`] || 0);
+                case 'name':
+                case 'state':
+                    return (row.dataset[`sort${key[0].toUpperCase()}${key.slice(1)}`] || '').toLowerCase();
+                default:
+                    return '';
+            }
+        }
+
+        function applySort() {
+            if (!sortKey) return;
+            allRows.sort((a, b) => {
+                const av = sortValue(a, sortKey);
+                const bv = sortValue(b, sortKey);
+                if (av < bv) return sortDirection === 'asc' ? -1 : 1;
+                if (av > bv) return sortDirection === 'asc' ? 1 : -1;
+                return Number(a.dataset.initialIndex) - Number(b.dataset.initialIndex);
+            });
+        }
+
+        function syncRowOrder() {
+            const frag = document.createDocumentFragment();
+            for (const row of allRows) frag.appendChild(row);
+            tbody.appendChild(frag);
+        }
+
+        function updateSortHeaders() {
+            for (const header of sortableHeaders) {
+                const active = header.dataset.sortKey === sortKey;
+                header.classList.toggle('active', active);
+                header.dataset.sortDirection = active ? sortDirection : '';
+                header.setAttribute('aria-sort', active ? (sortDirection === 'asc' ? 'ascending' : 'descending') : 'none');
+            }
         }
 
         function pageTokens(pageCount, page) {
@@ -447,6 +491,9 @@
         }
 
         function render() {
+            applySort();
+            syncRowOrder();
+            updateSortHeaders();
             const rows = filteredRows();
             const total = rows.length;
             const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -469,6 +516,20 @@
             currentPage = 1;
             render();
         });
+        for (const header of sortableHeaders) {
+            header.addEventListener('click', () => {
+                const key = header.dataset.sortKey;
+                if (!key) return;
+                if (sortKey === key) {
+                    sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+                } else {
+                    sortKey = key;
+                    sortDirection = 'asc';
+                }
+                currentPage = 1;
+                render();
+            });
+        }
         for (const pager of pagers) {
             pager.prevBtn.addEventListener('click', () => {
                 if (currentPage > 1) {

@@ -516,6 +516,27 @@ table th, table td {
 }
 
 table th { color: var(--text-secondary); font-weight: 500; }
+table th[data-sort-key] {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+table th[data-sort-key]::after {
+    content: "\2195";
+    display: inline-block;
+    margin-left: 6px;
+    color: var(--border);
+    font-size: 11px;
+}
+table th[data-sort-key].active::after {
+    color: var(--accent);
+}
+table th[data-sort-key][data-sort-direction="asc"]::after {
+    content: "\2191";
+}
+table th[data-sort-key][data-sort-direction="desc"]::after {
+    content: "\2193";
+}
 table tr:hover { background: rgba(255,255,255,0.02); }
 
 @media (max-width: 760px) {
