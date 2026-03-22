@@ -351,11 +351,27 @@
         }
     }
 
+    function updatePageURL({ tab, sort, order } = {}) {
+        const url = new URL(window.location.href);
+        if (tab !== undefined) {
+            url.hash = tab ? `#${tab}` : '';
+        }
+        if (sort !== undefined) {
+            if (sort) url.searchParams.set('sort', sort);
+            else url.searchParams.delete('sort');
+        }
+        if (order !== undefined) {
+            if (order) url.searchParams.set('order', order);
+            else url.searchParams.delete('order');
+        }
+        history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`);
+    }
+
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', () => {
             const tabName = tab.dataset.tab;
             switchTab(tabName);
-            history.replaceState(null, '', '#' + tabName);
+            updatePageURL({ tab: tabName });
         });
     });
 
@@ -384,11 +400,13 @@
         ];
         const empty = document.getElementById('runs-filter-empty');
         const PAGE_SIZE = 16;
+        const validSortKeys = new Set(['name', 'state', 'steps', 'created']);
+        const initialURL = new URL(window.location.href);
         let currentPage = 1;
         let filter = '';
         let allRows = [];
-        let sortKey = '';
-        let sortDirection = 'asc';
+        let sortKey = validSortKeys.has(initialURL.searchParams.get('sort')) ? initialURL.searchParams.get('sort') : '';
+        let sortDirection = initialURL.searchParams.get('order') === 'desc' ? 'desc' : 'asc';
 
         function collectRows() {
             allRows = Array.from(tbody.querySelectorAll('tr[data-run-id]'));
@@ -526,6 +544,7 @@
                     sortKey = key;
                     sortDirection = 'asc';
                 }
+                updatePageURL({ sort: sortKey, order: sortDirection });
                 currentPage = 1;
                 render();
             });
