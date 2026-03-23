@@ -4,8 +4,8 @@ import random
 import time
 import wandb
 
-os.environ["WANDB_BASE_URL"] = "http://localhost:8080"
-os.environ["WANDB_API_KEY"] = "dev-" + "lo" * 20 + "_example"
+os.environ.setdefault("WANDB_BASE_URL", "http://localhost:8080")
+os.environ.setdefault("WANDB_API_KEY", "dev-" + "lo" * 20 + "_example")
 
 # Step 1: Create a parent run with 100 steps
 print("=== Creating parent run with 100 steps ===")
