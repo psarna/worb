@@ -278,6 +278,7 @@ func New(dataDir, engine string) (*DB, error) {
 	wal.startReader(store)
 
 	store.StartCleanup()
+	store.StartStorageUsageRefresh()
 
 	return store, nil
 }

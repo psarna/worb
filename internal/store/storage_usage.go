@@ -3,6 +3,7 @@ package store
 import (
 	"sort"
 	"sync"
+	"time"
 )
 
 type StorageUsage struct {
@@ -23,6 +24,8 @@ type storageUsageCache struct {
 	snapshot StorageUsageSnapshot
 	refresh  chan struct{}
 }
+
+const storageUsageRefreshEvery = time.Hour
 
 func newStorageUsageCache() *storageUsageCache {
 	return &storageUsageCache{}
@@ -55,15 +58,34 @@ func (db *DB) FreshStorageUsageSnapshot() StorageUsageSnapshot {
 	snapshot := db.computeStorageUsageSnapshot()
 
 	db.storageCache.mu.Lock()
-	if len(snapshot.TopProjects) > 0 || len(snapshot.TopRuns) > 0 {
-		db.storageCache.snapshot = cloneStorageUsageSnapshot(snapshot)
-	}
+	db.storageCache.snapshot = cloneStorageUsageSnapshot(snapshot)
 	close(ch)
 	db.storageCache.refresh = nil
 	cached := cloneStorageUsageSnapshot(db.storageCache.snapshot)
 	db.storageCache.mu.Unlock()
 
 	return cached
+}
+
+func (db *DB) StartStorageUsageRefresh() {
+	if db.storageCache == nil {
+		return
+	}
+	go func() {
+		db.FreshStorageUsageSnapshot()
+
+		ticker := time.NewTicker(storageUsageRefreshEvery)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ticker.C:
+				db.FreshStorageUsageSnapshot()
+			case <-db.ctx.Done():
+				return
+			}
+		}
+	}()
 }
 
 func (db *DB) computeStorageUsageSnapshot() StorageUsageSnapshot {
