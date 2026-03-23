@@ -37,6 +37,8 @@ type Run struct {
 	EventsLineCount      int
 	LogLineCount         int
 	ReceivedHistoryCount int
+	ForkRunID            *string
+	ForkStep             *int
 	CreatedAt            time.Time
 	UpdatedAt            time.Time
 	HeartbeatAt          time.Time
@@ -203,16 +205,20 @@ func (db *DB) GetRun(id string) (*Run, error) {
 	r := &Run{}
 	var config, summary, tags sql.NullString
 	var displayName, host, program, gitCommit, notes, groupName, jobType, sweepName sql.NullString
+	var forkRunID sql.NullString
+	var forkStep sql.NullInt64
 	var createdAt, updatedAt, heartbeatAt flexTime
 	err := db.QueryRow(fmt.Sprintf(`SELECT r.id, r.project_id, r.name, r.display_name,
 		%s, %s, r.state,
 		r.host, r.program, r.git_commit, %s, r.notes, r.group_name, r.job_type, r.sweep_name,
 		r.history_line_count, r.events_line_count, r.log_line_count, COALESCE(r.received_history_count, 0),
+		r.fork_run_id, r.fork_step,
 		r.created_at, r.updated_at, r.heartbeat_at
 		FROM runs r WHERE r.id = ? AND r.deleted_at IS NULL`, db.castJSON("r.config"), db.castJSON("r.summary"), db.castJSON("r.tags")), id).
 		Scan(&r.ID, &r.ProjectID, &r.Name, &displayName, &config, &summary, &r.State,
 			&host, &program, &gitCommit, &tags, &notes, &groupName, &jobType, &sweepName,
 			&r.HistoryLineCount, &r.EventsLineCount, &r.LogLineCount, &r.ReceivedHistoryCount,
+			&forkRunID, &forkStep,
 			&createdAt, &updatedAt, &heartbeatAt)
 	r.CreatedAt = createdAt.Time
 	r.UpdatedAt = updatedAt.Time
@@ -228,6 +234,13 @@ func (db *DB) GetRun(id string) (*Run, error) {
 	r.GroupName = groupName.String
 	r.JobType = jobType.String
 	r.SweepName = sweepName.String
+	if forkRunID.Valid {
+		r.ForkRunID = &forkRunID.String
+	}
+	if forkStep.Valid {
+		v := int(forkStep.Int64)
+		r.ForkStep = &v
+	}
 	if config.Valid {
 		r.Config = json.RawMessage(config.String)
 	}
@@ -243,6 +256,10 @@ func (db *DB) GetRun(id string) (*Run, error) {
 func (db *DB) GetRunByName(projectID, name string) (*Run, error) {
 	var id string
 	err := db.QueryRow("SELECT id FROM runs WHERE project_id = ? AND name = ? AND deleted_at IS NULL", projectID, name).Scan(&id)
+	if err == sql.ErrNoRows {
+		// Fallback: try matching by display_name
+		err = db.QueryRow("SELECT id FROM runs WHERE project_id = ? AND display_name = ? AND deleted_at IS NULL", projectID, name).Scan(&id)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -254,6 +271,7 @@ func (db *DB) ListRuns(projectID string) ([]*Run, error) {
 		%s, %s, r.state,
 		r.host, r.program, r.git_commit, %s, r.notes, r.group_name, r.job_type, r.sweep_name,
 		r.history_line_count, r.events_line_count, r.log_line_count, COALESCE(r.received_history_count, 0),
+		r.fork_run_id, r.fork_step,
 		r.created_at, r.updated_at, r.heartbeat_at
 		FROM runs r WHERE r.project_id = ? AND r.deleted_at IS NULL ORDER BY r.created_at DESC`,
 		db.castJSON("r.config"), db.castJSON("r.summary"), db.castJSON("r.tags")), projectID)
@@ -267,10 +285,13 @@ func (db *DB) ListRuns(projectID string) ([]*Run, error) {
 		r := &Run{}
 		var config, summary, tags sql.NullString
 		var displayName, host, program, gitCommit, notes, groupName, jobType, sweepName sql.NullString
+		var forkRunID sql.NullString
+		var forkStep sql.NullInt64
 		var createdAt, updatedAt, heartbeatAt flexTime
 		if err := rows.Scan(&r.ID, &r.ProjectID, &r.Name, &displayName, &config, &summary, &r.State,
 			&host, &program, &gitCommit, &tags, &notes, &groupName, &jobType, &sweepName,
 			&r.HistoryLineCount, &r.EventsLineCount, &r.LogLineCount, &r.ReceivedHistoryCount,
+			&forkRunID, &forkStep,
 			&createdAt, &updatedAt, &heartbeatAt); err != nil {
 			return nil, err
 		}
@@ -285,6 +306,13 @@ func (db *DB) ListRuns(projectID string) ([]*Run, error) {
 		r.GroupName = groupName.String
 		r.JobType = jobType.String
 		r.SweepName = sweepName.String
+		if forkRunID.Valid {
+			r.ForkRunID = &forkRunID.String
+		}
+		if forkStep.Valid {
+			v := int(forkStep.Int64)
+			r.ForkStep = &v
+		}
 		if config.Valid {
 			r.Config = json.RawMessage(config.String)
 		}
@@ -364,6 +392,7 @@ func (db *DB) ListRunsFiltered(projectID string, displayName string) ([]*Run, er
 		%s, %s, r.state,
 		r.host, r.program, r.git_commit, %s, r.notes, r.group_name, r.job_type, r.sweep_name,
 		r.history_line_count, r.events_line_count, r.log_line_count, COALESCE(r.received_history_count, 0),
+		r.fork_run_id, r.fork_step,
 		r.created_at, r.updated_at, r.heartbeat_at
 		FROM runs r WHERE r.project_id = ? AND r.deleted_at IS NULL`,
 		db.castJSON("r.config"), db.castJSON("r.summary"), db.castJSON("r.tags"))
@@ -385,10 +414,13 @@ func (db *DB) ListRunsFiltered(projectID string, displayName string) ([]*Run, er
 		r := &Run{}
 		var config, summary, tags sql.NullString
 		var dn, host, program, gitCommit, notes, groupName, jobType, sweepName sql.NullString
+		var forkRunID sql.NullString
+		var forkStep sql.NullInt64
 		var createdAt, updatedAt, heartbeatAt flexTime
 		if err := rows.Scan(&r.ID, &r.ProjectID, &r.Name, &dn, &config, &summary, &r.State,
 			&host, &program, &gitCommit, &tags, &notes, &groupName, &jobType, &sweepName,
 			&r.HistoryLineCount, &r.EventsLineCount, &r.LogLineCount, &r.ReceivedHistoryCount,
+			&forkRunID, &forkStep,
 			&createdAt, &updatedAt, &heartbeatAt); err != nil {
 			return nil, err
 		}
@@ -403,6 +435,13 @@ func (db *DB) ListRunsFiltered(projectID string, displayName string) ([]*Run, er
 		r.GroupName = groupName.String
 		r.JobType = jobType.String
 		r.SweepName = sweepName.String
+		if forkRunID.Valid {
+			r.ForkRunID = &forkRunID.String
+		}
+		if forkStep.Valid {
+			v := int(forkStep.Int64)
+			r.ForkStep = &v
+		}
 		if config.Valid {
 			r.Config = json.RawMessage(config.String)
 		}
@@ -415,6 +454,141 @@ func (db *DB) ListRunsFiltered(projectID string, displayName string) ([]*Run, er
 		runs = append(runs, r)
 	}
 	return runs, nil
+}
+
+type ForkRunParams struct {
+	ParentRunID     string
+	ForkStep        int
+	NewRunID        string          // if empty, generates a new UUID
+	DisplayName     string          // optional
+	ConfigOverrides json.RawMessage // merged on top of parent config
+}
+
+func (db *DB) ForkRun(p ForkRunParams) (*Run, error) {
+	// Check parent run exists and has no unflushed WAL data
+	parent, err := db.GetRun(p.ParentRunID)
+	if err != nil {
+		return nil, fmt.Errorf("parent run not found: %s", p.ParentRunID)
+	}
+	if parent.ReceivedHistoryCount != parent.HistoryLineCount {
+		return nil, fmt.Errorf("parent run has unflushed data (%d received, %d flushed); finish the run or wait for WAL flush before forking",
+			parent.ReceivedHistoryCount, parent.HistoryLineCount)
+	}
+
+	// Validate fork_step
+	if p.ForkStep < 0 {
+		return nil, fmt.Errorf("invalid fork_step: must be >= 0")
+	}
+	var maxStep int
+	err = db.QueryRow("SELECT COALESCE(MAX(step), -1) FROM run_steps WHERE run_id = ?", p.ParentRunID).Scan(&maxStep)
+	if err != nil {
+		return nil, fmt.Errorf("query max step: %w", err)
+	}
+	if p.ForkStep > maxStep {
+		return nil, fmt.Errorf("invalid fork_step %d: parent run has max step %d", p.ForkStep, maxStep)
+	}
+
+	// Generate new run ID
+	newID := p.NewRunID
+	if newID == "" {
+		newID = uuid.New().String()
+	}
+	name := newID
+	if len(name) >= 8 {
+		name = name[:8]
+	}
+
+	// Merge config: parent base + overrides
+	mergedConfig := parent.Config
+	if p.ConfigOverrides != nil {
+		mergedConfig = mergeConfigJSON(parent.Config, p.ConfigOverrides)
+	}
+
+	displayName := p.DisplayName
+	if displayName == "" && parent.DisplayName != "" {
+		displayName = fmt.Sprintf("fork of %s @%d", parent.DisplayName, p.ForkStep)
+	}
+
+	configStr := "{}"
+	if mergedConfig != nil {
+		configStr = string(mergedConfig)
+	}
+	tagsStr := "[]"
+	if parent.Tags != nil {
+		tagsStr = string(parent.Tags)
+	}
+
+	if p.NewRunID != "" {
+		// Run already exists (created by UpsertRun) — update it with fork metadata
+		_, err = db.Exec(`UPDATE runs SET config = ?, tags = ?, notes = ?, host = ?, program = ?,
+			git_commit = ?, group_name = ?, job_type = ?, sweep_name = ?,
+			fork_run_id = ?, fork_step = ?, updated_at = current_timestamp
+			WHERE id = ?`,
+			configStr, tagsStr, parent.Notes, parent.Host, parent.Program,
+			parent.GitCommit, parent.GroupName, parent.JobType, parent.SweepName,
+			p.ParentRunID, p.ForkStep, newID)
+		if err != nil {
+			return nil, fmt.Errorf("update forked run: %w", err)
+		}
+	} else {
+		// Create a brand new run record
+		_, err = db.Exec(`INSERT INTO runs (id, project_id, name, display_name, config, summary, state,
+			host, program, git_commit, tags, notes, group_name, job_type, sweep_name, fork_run_id, fork_step)
+			VALUES (?, ?, ?, ?, ?, '{}', 'running', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			newID, parent.ProjectID, name, displayName, configStr,
+			parent.Host, parent.Program, parent.GitCommit, tagsStr, parent.Notes,
+			parent.GroupName, parent.JobType, parent.SweepName, p.ParentRunID, p.ForkStep)
+		if err != nil {
+			return nil, fmt.Errorf("insert forked run: %w", err)
+		}
+	}
+
+	// Set history_line_count synchronously so the wandb client gets the correct
+	// file offset and starts logging at fork_step+1 (not 0).
+	var parentStepCount int
+	err = db.QueryRow("SELECT COUNT(*) FROM run_steps WHERE run_id = ? AND step <= ?", p.ParentRunID, p.ForkStep).Scan(&parentStepCount)
+	if err != nil {
+		return nil, fmt.Errorf("count parent steps: %w", err)
+	}
+	_, err = db.Exec("UPDATE runs SET history_line_count = ? WHERE id = ?", parentStepCount, newID)
+	if err != nil {
+		return nil, fmt.Errorf("set history_line_count: %w", err)
+	}
+
+	// Enqueue WAL fork entry for async data copy
+	err = db.wal.Append(walEntry{
+		RunID:    newID,
+		ForkFrom: &walForkOp{ParentRunID: p.ParentRunID, MaxStep: p.ForkStep},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("enqueue fork WAL entry: %w", err)
+	}
+
+	return db.GetRun(newID)
+}
+
+// mergeConfigJSON overlays overrides on top of base config JSON.
+// Both are expected to be JSON objects. Keys in overrides replace keys in base.
+func mergeConfigJSON(base, overrides json.RawMessage) json.RawMessage {
+	var baseMap map[string]json.RawMessage
+	var overMap map[string]json.RawMessage
+
+	if json.Unmarshal(base, &baseMap) != nil {
+		baseMap = map[string]json.RawMessage{}
+	}
+	if json.Unmarshal(overrides, &overMap) != nil {
+		return base
+	}
+
+	for k, v := range overMap {
+		baseMap[k] = v
+	}
+
+	merged, err := json.Marshal(baseMap)
+	if err != nil {
+		return base
+	}
+	return merged
 }
 
 func (db *DB) ListAllProjects() ([]*Project, error) {

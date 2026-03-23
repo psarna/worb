@@ -512,6 +512,8 @@ func (db *DB) migrateSQLite() error {
 	db.Exec("ALTER TABLE runs ADD COLUMN deleted_at TEXT")
 	db.Exec("ALTER TABLE projects ADD COLUMN deleted_at TEXT")
 	db.Exec("ALTER TABLE runs ADD COLUMN received_history_count INTEGER DEFAULT 0")
+	db.Exec("ALTER TABLE runs ADD COLUMN fork_run_id TEXT")
+	db.Exec("ALTER TABLE runs ADD COLUMN fork_step INTEGER")
 
 	db.Exec(`CREATE TABLE IF NOT EXISTS run_keys (
 		run_id TEXT NOT NULL REFERENCES runs(id),

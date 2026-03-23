@@ -119,9 +119,9 @@
             </thead>
             <tbody id="runs-table-body" data-pending-pagination="1">
                 {{range .Runs}}
-                <tr onclick="location.href='/runs/{{.ID}}'" style="cursor: pointer;" data-run-id="{{.ID}}" data-run-filter="{{if .DisplayName}}{{.DisplayName}} {{end}}{{.Name}} {{.ID}} {{.State}}" data-sort-name="{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Name}}{{end}}" data-sort-state="{{.State}}" data-sort-steps="{{.HistoryLineCount}}" data-sort-created="{{.CreatedAt.Unix}}">
+                <tr onclick="location.href='/runs/{{.ID}}'" style="cursor: pointer;" data-run-id="{{.ID}}" data-run-filter="{{if .DisplayName}}{{.DisplayName}} {{end}}{{.Name}} {{.ID}} {{.State}}{{if .ForkRunID}} fork{{end}}" data-sort-name="{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Name}}{{end}}" data-sort-state="{{.State}}" data-sort-steps="{{.HistoryLineCount}}" data-sort-created="{{.CreatedAt.Unix}}">
                     <td>
-                        <a href="/runs/{{.ID}}">{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Name}}{{end}}</a>
+                        <a href="/runs/{{.ID}}">{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Name}}{{end}}</a>{{if .ForkRunID}} <span class="badge forked">fork</span>{{end}}
                     </td>
                     <td><span class="badge {{.State}}">{{.State}}</span>{{if gt .ReceivedHistoryCount .HistoryLineCount}} <span class="processing-wrap" data-tip="{{.HistoryLineCount}} / {{.ReceivedHistoryCount}} steps processed"><span class="processing-spinner"></span></span>{{end}}</td>
                     <td>{{.HistoryLineCount}}</td>

@@ -6,6 +6,59 @@ import (
 	"github.com/sarna/worb/internal/store"
 )
 
+type branchPoint struct {
+	RunID string
+	Step  int
+}
+
+// extractBranchPoint parses _wandb.branch_point from wandb config JSON.
+// The config format is: {"_wandb": {"value": {"branch_point": {"run_id": "...", "step": N}}}}
+func extractBranchPoint(config json.RawMessage) *branchPoint {
+	if config == nil {
+		return nil
+	}
+	var cfgMap map[string]json.RawMessage
+	if json.Unmarshal(config, &cfgMap) != nil {
+		return nil
+	}
+	wandbRaw, ok := cfgMap["_wandb"]
+	if !ok {
+		return nil
+	}
+
+	// Try wrapped format: {"value": {"branch_point": {...}}}
+	var wrapper struct {
+		Value map[string]json.RawMessage `json:"value"`
+	}
+	if json.Unmarshal(wandbRaw, &wrapper) == nil && wrapper.Value != nil {
+		if bpRaw, ok := wrapper.Value["branch_point"]; ok {
+			var bp struct {
+				RunID string `json:"run_id"`
+				Step  int    `json:"step"`
+			}
+			if json.Unmarshal(bpRaw, &bp) == nil && bp.RunID != "" {
+				return &branchPoint{RunID: bp.RunID, Step: bp.Step}
+			}
+		}
+	}
+
+	// Try plain format: {"branch_point": {...}}
+	var plain map[string]json.RawMessage
+	if json.Unmarshal(wandbRaw, &plain) == nil {
+		if bpRaw, ok := plain["branch_point"]; ok {
+			var bp struct {
+				RunID string `json:"run_id"`
+				Step  int    `json:"step"`
+			}
+			if json.Unmarshal(bpRaw, &bp) == nil && bp.RunID != "" {
+				return &branchPoint{RunID: bp.RunID, Step: bp.Step}
+			}
+		}
+	}
+
+	return nil
+}
+
 func storeRunToGQL(r *store.Run) *Run {
 	gqlRun := &Run{
 		ID:   r.ID,

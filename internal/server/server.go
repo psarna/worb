@@ -113,6 +113,7 @@ func (s *Server) setupRoutes() {
 		r.Get("/runs/{runID}/histograms", s.apiGetHistograms)
 		r.Get("/runs/{runID}/logs", s.apiGetLogs)
 		r.Get("/runs/{runID}/files", s.apiGetFiles)
+		r.Post("/runs/{runID}/fork", s.apiForkRun)
 		r.Delete("/runs/{runID}", s.apiDeleteRun)
 		r.Delete("/projects/{projectID}", s.apiDeleteProject)
 		r.Post("/query", s.apiQuery)
@@ -229,6 +230,39 @@ func (s *Server) apiDeleteProject(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "deleted"})
+}
+
+func (s *Server) apiForkRun(w http.ResponseWriter, r *http.Request) {
+	runID := chi.URLParam(r, "runID")
+
+	var req struct {
+		ForkStep    int    `json:"fork_step"`
+		DisplayName string `json:"display_name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	run, err := s.store.ForkRun(store.ForkRunParams{
+		ParentRunID: runID,
+		ForkStep:    req.ForkStep,
+		DisplayName: req.DisplayName,
+	})
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			http.Error(w, err.Error(), http.StatusNotFound)
+		} else if strings.Contains(err.Error(), "invalid") || strings.Contains(err.Error(), "unflushed") {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(run)
 }
 
 func (s *Server) apiGetHistoryKeys(w http.ResponseWriter, r *http.Request) {

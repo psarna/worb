@@ -79,6 +79,7 @@ h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
 .badge.finished { background: rgba(88, 166, 255, 0.2); color: var(--accent); }
 .badge.crashed { background: rgba(248, 81, 73, 0.2); color: var(--red); }
 .badge.failed { background: rgba(248, 81, 73, 0.2); color: var(--red); }
+.badge.forked { background: rgba(163, 113, 247, 0.2); color: #a371f7; }
 .processing-wrap {
     position: relative;
     display: inline-block;

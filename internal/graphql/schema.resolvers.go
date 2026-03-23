@@ -137,6 +137,61 @@ func (r *mutationResolver) UpsertBucket(ctx context.Context, input *UpsertBucket
 		params.Tags = tagsJSON
 	}
 
+	// Check for fork_from via _wandb.branch_point in config
+	bp := extractBranchPoint(params.Config)
+	if bp != nil {
+		// Create the new run first
+		run, err := r.Store.UpsertRun(params)
+		if err != nil {
+			return nil, fmt.Errorf("upsert run: %w", err)
+		}
+
+		// Look up parent run by name
+		entityStr := params.Entity
+		if entityStr == "" {
+			entityStr = "local"
+		}
+		projectStr := params.Project
+		if projectStr == "" {
+			projectStr = "default"
+		}
+		proj, err := r.Store.EnsureProject(entityStr, projectStr)
+		if err != nil {
+			return nil, fmt.Errorf("ensure project for fork: %w", err)
+		}
+		parentRun, err := r.Store.GetRunByName(proj.ID, bp.RunID)
+		if err != nil {
+			return nil, fmt.Errorf("fork parent run not found: %s", bp.RunID)
+		}
+
+		// Fork: enqueue data copy via WAL
+		run, err = r.Store.ForkRun(store.ForkRunParams{
+			ParentRunID:     parentRun.ID,
+			ForkStep:        bp.Step,
+			NewRunID:        run.ID,
+			ConfigOverrides: params.Config,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("fork run: %w", err)
+		}
+
+		gqlRun := storeRunToGQL(run)
+		gqlRun.Project = &Project{
+			ID:   proj.ID,
+			Name: proj.Name,
+			Entity: &Entity{
+				ID:           proj.Entity,
+				Name:         proj.Entity,
+				Organization: &Organization{ID: proj.Entity, Name: proj.Entity},
+			},
+		}
+		inserted := true
+		return &UpsertBucketPayload{
+			Bucket:   gqlRun,
+			Inserted: &inserted,
+		}, nil
+	}
+
 	run, err := r.Store.UpsertRun(params)
 	if err != nil {
 		return nil, fmt.Errorf("upsert run: %w", err)

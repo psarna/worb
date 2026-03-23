@@ -27,10 +27,16 @@ const (
 )
 
 type walEntry struct {
-	RunID   string          `json:"run_id"`
-	History []walHistoryRow `json:"history,omitempty"`
-	Events  []walEventRow   `json:"events,omitempty"`
-	Logs    []walLogRow     `json:"logs,omitempty"`
+	RunID    string          `json:"run_id"`
+	History  []walHistoryRow `json:"history,omitempty"`
+	Events   []walEventRow   `json:"events,omitempty"`
+	Logs     []walLogRow     `json:"logs,omitempty"`
+	ForkFrom *walForkOp      `json:"fork_from,omitempty"`
+}
+
+type walForkOp struct {
+	ParentRunID string `json:"parent_run_id"`
+	MaxStep     int    `json:"max_step"`
 }
 
 type walHistoryRow struct {
@@ -182,6 +188,7 @@ func (w *WAL) readerLoop(db *DB) {
 		events      []eventItem
 		logs        []logItem
 		counters    []counterDelta
+		forkOps     []forkOpItem
 		itemCount   int
 		lastFlush   = time.Now()
 		lastPosSave = time.Now()
@@ -212,6 +219,12 @@ func (w *WAL) readerLoop(db *DB) {
 			db.processCounters(counters)
 			counters = counters[:0]
 		}
+		for _, fop := range forkOps {
+			if err := db.processForkOp(fop.runID, fop.op); err != nil {
+				log.Printf("[flush] ERROR fork run=%s parent=%s: %v", fop.runID[:8], fop.op.ParentRunID[:8], err)
+			}
+		}
+		forkOps = forkOps[:0]
 		itemCount = 0
 		lastFlush = time.Now()
 	}
@@ -235,7 +248,7 @@ func (w *WAL) readerLoop(db *DB) {
 		case ch := <-w.flushNow:
 			for scanner.Scan() {
 				w.pos += int64(len(scanner.Bytes())) + 1
-				w.processLine(scanner.Bytes(), &scalars, &histograms, &events, &logs, &counters, &itemCount)
+				w.processLine(scanner.Bytes(), &scalars, &histograms, &events, &logs, &counters, &forkOps, &itemCount)
 			}
 			flush()
 			w.savePos()
@@ -248,7 +261,7 @@ func (w *WAL) readerLoop(db *DB) {
 		if scanner.Scan() {
 			line := scanner.Bytes()
 			w.pos += int64(len(line)) + 1
-			w.processLine(line, &scalars, &histograms, &events, &logs, &counters, &itemCount)
+			w.processLine(line, &scalars, &histograms, &events, &logs, &counters, &forkOps, &itemCount)
 
 			if itemCount >= walBatchItems || time.Since(lastFlush) >= walFlushEvery {
 				flush()
@@ -285,7 +298,12 @@ func (w *WAL) readerLoop(db *DB) {
 	}
 }
 
-func (w *WAL) processLine(line []byte, scalars *[]scalarItem, histograms *[]histogramItem, events *[]eventItem, logs *[]logItem, counters *[]counterDelta, itemCount *int) {
+type forkOpItem struct {
+	runID string
+	op    walForkOp
+}
+
+func (w *WAL) processLine(line []byte, scalars *[]scalarItem, histograms *[]histogramItem, events *[]eventItem, logs *[]logItem, counters *[]counterDelta, forkOps *[]forkOpItem, itemCount *int) {
 	if len(line) == 0 {
 		return
 	}
@@ -293,6 +311,12 @@ func (w *WAL) processLine(line []byte, scalars *[]scalarItem, histograms *[]hist
 	var entry walEntry
 	if err := json.Unmarshal(line, &entry); err != nil {
 		log.Printf("[wal] bad line (skipping): %v", err)
+		return
+	}
+
+	if entry.ForkFrom != nil {
+		*forkOps = append(*forkOps, forkOpItem{runID: entry.RunID, op: *entry.ForkFrom})
+		*itemCount++
 		return
 	}
 
