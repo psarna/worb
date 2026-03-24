@@ -34,6 +34,19 @@
             <span class="badge {{.Run.State}}">{{.Run.State}}</span>{{if gt .Run.ReceivedHistoryCount .Run.HistoryLineCount}}<span class="processing-wrap" data-tip="{{.Run.HistoryLineCount}} / {{.Run.ReceivedHistoryCount}} steps processed"><span class="processing-spinner"></span></span>{{end}}
             <button class="btn-delete" onclick="deleteRun()" title="Delete this run"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5.33 4V2.67a1.33 1.33 0 011.34-1.34h2.66a1.33 1.33 0 011.34 1.34V4M12.67 4v9.33a1.33 1.33 0 01-1.34 1.34H4.67a1.33 1.33 0 01-1.34-1.34V4h9.34z"/></svg></button>
         </div>
+        {{if .ParentRun}}
+        <div class="fork-context">
+            <div class="fork-context-main">
+                <span class="badge forked">fork</span>
+                <span>Forked from <a href="/runs/{{.ParentRun.ID}}">{{if .ParentRun.DisplayName}}{{.ParentRun.DisplayName}}{{else}}{{.ParentRun.Name}}{{end}}</a>{{if .ForkStepDisplay}} at step {{.ForkStepDisplay}}{{end}}</span>
+            </div>
+            <div class="fork-context-meta">
+                <span class="badge {{.ParentRun.State}}">{{.ParentRun.State}}</span>
+                <span>{{.ParentRun.HistoryLineCount}} steps</span>
+                <span>{{.ParentRun.CreatedAt.Format "2006-01-02 15:04"}}</span>
+            </div>
+        </div>
+        {{end}}
 
         <div class="tabs">
             <div class="tab active" data-tab="charts">Charts</div>
@@ -100,6 +113,21 @@
             <div class="overview-section" id="overview-tags-section" style="display:none;">
                 <h3 class="overview-heading">Tags</h3>
                 <div class="overview-tags" id="overview-tags"></div>
+            </div>
+            <div class="overview-section" id="overview-parent-section" style="display:none;">
+                <h3 class="overview-heading">Parent Run</h3>
+                <div class="fork-parent-card">
+                    <div class="fork-parent-title" id="overview-parent-title"></div>
+                    <table class="config-table" id="overview-parent-table">
+                        <tbody></tbody>
+                    </table>
+                    <div id="overview-parent-summary-section" style="display:none; margin-top: 16px;">
+                        <h3 class="overview-heading" style="margin-bottom: 8px;">Parent Summary Preview</h3>
+                        <table class="config-table" id="overview-parent-summary-table">
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
             <div class="overview-section">
                 <h3 class="overview-heading">Run Info</h3>
@@ -1333,6 +1361,7 @@ ORDER BY step LIMIT 20</textarea>
         const notes = {{.NotesJSON}};
         const config = {{.ConfigJSON}};
         const runMeta = {{.RunMetaJSON}};
+        const parentPreview = {{.ParentPreviewJSON}};
 
         if (notes) {
             document.getElementById('overview-notes-section').style.display = '';
@@ -1378,6 +1407,26 @@ ORDER BY step LIMIT 20</textarea>
         }
 
         renderTable('overview-table', info);
+
+        if (parentPreview) {
+            document.getElementById('overview-parent-section').style.display = '';
+            document.getElementById('overview-parent-title').innerHTML = `Forked from <a href="/runs/${parentPreview.id}">${parentPreview.label}</a>`;
+            const parentInfo = {
+                'State': parentPreview.state,
+                'Run name': parentPreview.name,
+                'Display name': parentPreview.displayName || undefined,
+                'Start time': parentPreview.createdAt,
+                'Steps': parentPreview.steps,
+            };
+            Object.keys(parentInfo).forEach(key => {
+                if (parentInfo[key] === undefined || parentInfo[key] === '') delete parentInfo[key];
+            });
+            renderTable('overview-parent-table', parentInfo);
+            if (parentPreview.summary && Object.keys(parentPreview.summary).length > 0) {
+                document.getElementById('overview-parent-summary-section').style.display = '';
+                renderTable('overview-parent-summary-table', parentPreview.summary);
+            }
+        }
     }
 
     async function loadFiles() {

@@ -121,6 +121,48 @@ h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
     margin-bottom: 24px;
 }
 
+.fork-context {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px 16px;
+    margin: -8px 0 24px;
+}
+
+.fork-context-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+}
+
+.fork-context-meta {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    margin-top: 8px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+.fork-parent-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px 16px;
+}
+
+.fork-parent-title {
+    font-size: 14px;
+    margin-bottom: 12px;
+}
+
+.run-parent-link {
+    margin-top: 4px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
 .btn-delete {
     margin-left: auto;
     background: none;

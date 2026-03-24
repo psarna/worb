@@ -119,9 +119,13 @@
             </thead>
             <tbody id="runs-table-body" data-pending-pagination="1">
                 {{range .Runs}}
+                {{$run := .}}
                 <tr onclick="location.href='/runs/{{.ID}}'" style="cursor: pointer;" data-run-id="{{.ID}}" data-run-filter="{{if .DisplayName}}{{.DisplayName}} {{end}}{{.Name}} {{.ID}} {{.State}}{{if .ForkRunID}} fork{{end}}" data-sort-name="{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Name}}{{end}}" data-sort-state="{{.State}}" data-sort-steps="{{.HistoryLineCount}}" data-sort-created="{{.CreatedAt.Unix}}">
                     <td>
                         <a href="/runs/{{.ID}}">{{if .DisplayName}}{{.DisplayName}}{{else}}{{.Name}}{{end}}</a>{{if .ForkRunID}} <span class="badge forked">fork</span>{{end}}
+                        {{with index $.ForkParentIDs $run.ID}}
+                        <div class="run-parent-link">fork of <a href="/runs/{{.}}">{{index $.ForkParentNames $run.ID}}</a>{{with index $.ForkSteps $run.ID}} at step {{.}}{{end}}</div>
+                        {{end}}
                     </td>
                     <td><span class="badge {{.State}}">{{.State}}</span>{{if gt .ReceivedHistoryCount .HistoryLineCount}} <span class="processing-wrap" data-tip="{{.HistoryLineCount}} / {{.ReceivedHistoryCount}} steps processed"><span class="processing-spinner"></span></span>{{end}}</td>
                     <td>{{.HistoryLineCount}}</td>

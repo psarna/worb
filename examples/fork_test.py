@@ -14,6 +14,7 @@ child_run_names = [
     f"child-run-{suffix}-1",
     f"child-run-{suffix}-2",
 ]
+grandchild_run_name = f"grandchild-run-{suffix}-2a"
 
 # Step 1: Create a parent run with 100 steps
 print("=== Creating parent run with 100 steps ===")
@@ -43,6 +44,9 @@ forks = [
     (child_run_names[0], 50, 110, 5e-4),
     (child_run_names[1], 75, 220, 2.5e-4),
 ]
+long_child_id = None
+long_child_name = None
+long_child_fork_step = 150
 
 for child_name, fork_step, total_steps, learning_rate in forks:
     print(f"=== Forking {child_name} from {parent_run_name} ({run.id}) at step {fork_step} ===")
@@ -65,5 +69,33 @@ for child_name, fork_step, total_steps, learning_rate in forks:
 
     child_run.finish()
     print(f"{child_name} finished.")
+
+    if child_name == child_run_names[1]:
+        long_child_id = child_run.id
+        long_child_name = child_name
+
+print("Waiting for WAL flush before forking the longer child...")
+time.sleep(3)
+
+print(f"=== Forking {grandchild_run_name} from {long_child_name} ({long_child_id}) at step {long_child_fork_step} ===")
+grandchild_run = wandb.init(
+    project="fork-test",
+    name=grandchild_run_name,
+    fork_from=f"{long_child_id}?_step={long_child_fork_step}",
+    config={
+        "learning_rate": 1.25e-4,
+    },
+)
+
+for step in range(long_child_fork_step + 1, 280):
+    t = step / 280
+    grandchild_run.log({
+        "train/loss": 0.8 * math.exp(-3.2 * t) + 0.03 + random.gauss(0, 0.008),
+        "train/accuracy": 1 - math.exp(-5.5 * t) + random.gauss(0, 0.004),
+        "val/loss": 0.9 * math.exp(-2.2 * t) + 0.06 + random.gauss(0, 0.015),
+    }, step=step)
+
+grandchild_run.finish()
+print(f"{grandchild_run_name} finished.")
 
 print("Done! Check http://localhost:8080 for results.")
