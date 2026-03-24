@@ -53,9 +53,31 @@ func (s *Server) uiProject(w http.ResponseWriter, r *http.Request) {
 			forkSteps[run.ID] = strconv.Itoa(*run.ForkStep)
 		}
 	}
+	type runNode struct {
+		ID        string  `json:"id"`
+		Label     string  `json:"label"`
+		State     string  `json:"state"`
+		Steps     int     `json:"steps"`
+		ForkRunID *string `json:"forkRunID"`
+		ForkStep  *int    `json:"forkStep"`
+	}
+	nodes := make([]runNode, len(runs))
+	for i, run := range runs {
+		nodes[i] = runNode{
+			ID:        run.ID,
+			Label:     runLabel(run),
+			State:     run.State,
+			Steps:     run.HistoryLineCount,
+			ForkRunID: run.ForkRunID,
+			ForkStep:  run.ForkStep,
+		}
+	}
+	runsJSON, _ := json.Marshal(nodes)
+
 	templates.ExecuteTemplate(w, "project.html", map[string]any{
 		"Project":         project,
 		"Runs":            runs,
+		"RunsJSON":        template.JS(runsJSON),
 		"ForkParentNames": forkParentNames,
 		"ForkParentIDs":   forkParentIDs,
 		"ForkSteps":       forkSteps,

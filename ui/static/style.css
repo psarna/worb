@@ -1088,6 +1088,65 @@ table tr:hover { background: rgba(255,255,255,0.02); }
     text-align: center;
 }
 
+.dag-container {
+    width: 100%;
+    overflow: auto;
+    padding: 16px 0;
+}
+
+.dag-container svg {
+    display: block;
+    margin: 0 auto;
+}
+
+.dag-node {
+    cursor: pointer;
+}
+
+.dag-node rect {
+    rx: 6;
+    ry: 6;
+    stroke-width: 1.5;
+    transition: stroke-width 0.15s, filter 0.15s;
+}
+
+.dag-node:hover rect {
+    stroke-width: 2.5;
+    filter: brightness(1.2);
+}
+
+.dag-node text {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    fill: var(--text);
+    pointer-events: none;
+}
+
+.dag-node .dag-label {
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.dag-node .dag-meta {
+    font-size: 11px;
+    fill: var(--text-secondary);
+}
+
+.dag-edge {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 1.5;
+}
+
+.dag-edge-label {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size: 10px;
+    fill: var(--text-secondary);
+}
+
+.dag-arrowhead {
+    fill: var(--border);
+}
+
 .crosshair-tooltip {
     position: absolute;
     pointer-events: none;

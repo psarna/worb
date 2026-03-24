@@ -25,6 +25,7 @@
         <div class="tabs">
             <div class="tab" data-tab="charts">Charts</div>
             <div class="tab active" data-tab="runs">Runs</div>
+            <div class="tab" data-tab="forks">Forks</div>
         </div>
 
         <div id="charts" class="tab-content">
@@ -157,6 +158,12 @@
         {{else}}
         <div class="empty-state">No runs yet.</div>
         {{end}}
+        </div>
+
+        <div id="forks" class="tab-content">
+            <div class="dag-container" id="dag-container">
+                <div class="empty-state" id="dag-empty" style="display:none;">No forks in this project.</div>
+            </div>
         </div>
     </div>
 
@@ -362,6 +369,7 @@
             tabEl.classList.add('active');
             document.getElementById(tabName).classList.add('active');
             if (tabName === 'charts') ensureChartsLoaded();
+            if (tabName === 'forks') ensureForksLoaded();
         }
     }
 
@@ -1992,9 +2000,210 @@
         reapplySettings();
     });
 
+    // ── Forks DAG ──────────────────────────────────────────────
+    const allRuns = {{.RunsJSON}};
+    let forksLoaded = false;
+
+    function ensureForksLoaded() {
+        if (forksLoaded) return;
+        forksLoaded = true;
+        renderDAG();
+    }
+
+    function renderDAG() {
+        const container = document.getElementById('dag-container');
+        const emptyEl = document.getElementById('dag-empty');
+
+        // Build parent→children map
+        const byId = {};
+        allRuns.forEach(r => byId[r.id] = r);
+        const children = {};   // parentID → [{run, forkStep}]
+        const hasParent = {};
+        allRuns.forEach(r => {
+            if (r.forkRunID && byId[r.forkRunID]) {
+                if (!children[r.forkRunID]) children[r.forkRunID] = [];
+                children[r.forkRunID].push(r);
+                hasParent[r.id] = true;
+            }
+        });
+
+        // Only show runs that are part of a fork tree (have parent or children)
+        const inTree = {};
+        allRuns.forEach(r => {
+            if (hasParent[r.id] || children[r.id]) inTree[r.id] = true;
+        });
+        const treeRuns = allRuns.filter(r => inTree[r.id]);
+        if (treeRuns.length === 0) {
+            emptyEl.style.display = '';
+            return;
+        }
+        emptyEl.style.display = 'none';
+
+        // BFS to assign depth levels starting from roots
+        const roots = treeRuns.filter(r => !hasParent[r.id]);
+        const depth = {};
+        const queue = [];
+        roots.forEach(r => { depth[r.id] = 0; queue.push(r.id); });
+        while (queue.length) {
+            const id = queue.shift();
+            (children[id] || []).forEach(c => {
+                depth[c.id] = depth[id] + 1;
+                queue.push(c.id);
+            });
+        }
+
+        // Group by depth level
+        const levels = {};
+        let maxDepth = 0;
+        treeRuns.forEach(r => {
+            const d = depth[r.id] ?? 0;
+            if (!levels[d]) levels[d] = [];
+            levels[d].push(r);
+            if (d > maxDepth) maxDepth = d;
+        });
+
+        // Layout constants
+        const nodeW = 180, nodeH = 52;
+        const hGap = 32, vGap = 64;
+        const padX = 24, padY = 24;
+
+        // Assign positions
+        const pos = {};  // id → {x, y}
+        let maxLevelW = 0;
+        for (let d = 0; d <= maxDepth; d++) {
+            const lvl = levels[d] || [];
+            const levelW = lvl.length * nodeW + (lvl.length - 1) * hGap;
+            if (levelW > maxLevelW) maxLevelW = levelW;
+        }
+        for (let d = 0; d <= maxDepth; d++) {
+            const lvl = levels[d] || [];
+            const levelW = lvl.length * nodeW + (lvl.length - 1) * hGap;
+            const offsetX = (maxLevelW - levelW) / 2;
+            lvl.forEach((r, i) => {
+                pos[r.id] = {
+                    x: padX + offsetX + i * (nodeW + hGap),
+                    y: padY + d * (nodeH + vGap),
+                };
+            });
+        }
+
+        const svgW = maxLevelW + padX * 2;
+        const svgH = (maxDepth + 1) * nodeH + maxDepth * vGap + padY * 2;
+
+        // State colors
+        const stateColors = {
+            running:  { fill: 'rgba(56,166,80,0.2)',  stroke: '#3fb950' },
+            finished: { fill: 'rgba(88,166,255,0.2)', stroke: '#58a6ff' },
+            crashed:  { fill: 'rgba(248,81,73,0.2)',  stroke: '#f85149' },
+            failed:   { fill: 'rgba(248,81,73,0.2)',  stroke: '#f85149' },
+        };
+        const defaultColor = { fill: 'rgba(139,148,158,0.2)', stroke: '#8b949e' };
+
+        // Build SVG
+        const ns = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('width', svgW);
+        svg.setAttribute('height', svgH);
+        svg.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
+
+        // Arrowhead marker
+        const defs = document.createElementNS(ns, 'defs');
+        const marker = document.createElementNS(ns, 'marker');
+        marker.setAttribute('id', 'dag-arrow');
+        marker.setAttribute('viewBox', '0 0 10 7');
+        marker.setAttribute('refX', '10');
+        marker.setAttribute('refY', '3.5');
+        marker.setAttribute('markerWidth', '8');
+        marker.setAttribute('markerHeight', '6');
+        marker.setAttribute('orient', 'auto-start-reverse');
+        const arrow = document.createElementNS(ns, 'polygon');
+        arrow.setAttribute('points', '0 0, 10 3.5, 0 7');
+        arrow.setAttribute('class', 'dag-arrowhead');
+        marker.appendChild(arrow);
+        defs.appendChild(marker);
+        svg.appendChild(defs);
+
+        // Draw edges
+        treeRuns.forEach(r => {
+            if (!r.forkRunID || !pos[r.forkRunID]) return;
+            const parent = pos[r.forkRunID];
+            const child = pos[r.id];
+            const x1 = parent.x + nodeW / 2;
+            const y1 = parent.y + nodeH;
+            const x2 = child.x + nodeW / 2;
+            const y2 = child.y;
+            const midY = (y1 + y2) / 2;
+
+            const path = document.createElementNS(ns, 'path');
+            path.setAttribute('d', `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`);
+            path.setAttribute('class', 'dag-edge');
+            path.setAttribute('marker-end', 'url(#dag-arrow)');
+            svg.appendChild(path);
+
+            // Edge label (fork step)
+            if (r.forkStep != null) {
+                const lx = (x1 + x2) / 2;
+                const ly = midY - 4;
+                const label = document.createElementNS(ns, 'text');
+                label.setAttribute('x', lx);
+                label.setAttribute('y', ly);
+                label.setAttribute('text-anchor', 'middle');
+                label.setAttribute('class', 'dag-edge-label');
+                label.textContent = `step ${r.forkStep}`;
+                svg.appendChild(label);
+            }
+        });
+
+        // Draw nodes
+        treeRuns.forEach(r => {
+            const p = pos[r.id];
+            const colors = stateColors[r.state] || defaultColor;
+
+            const g = document.createElementNS(ns, 'g');
+            g.setAttribute('class', 'dag-node');
+            g.addEventListener('click', () => { location.href = `/runs/${r.id}`; });
+
+            const rect = document.createElementNS(ns, 'rect');
+            rect.setAttribute('x', p.x);
+            rect.setAttribute('y', p.y);
+            rect.setAttribute('width', nodeW);
+            rect.setAttribute('height', nodeH);
+            rect.setAttribute('fill', colors.fill);
+            rect.setAttribute('stroke', colors.stroke);
+            g.appendChild(rect);
+
+            // Run name
+            const nameText = document.createElementNS(ns, 'text');
+            nameText.setAttribute('x', p.x + nodeW / 2);
+            nameText.setAttribute('y', p.y + 22);
+            nameText.setAttribute('text-anchor', 'middle');
+            nameText.setAttribute('class', 'dag-label');
+            const displayLabel = r.label.length > 20 ? r.label.slice(0, 18) + '...' : r.label;
+            nameText.textContent = displayLabel;
+            g.appendChild(nameText);
+
+            // State + steps
+            const meta = document.createElementNS(ns, 'text');
+            meta.setAttribute('x', p.x + nodeW / 2);
+            meta.setAttribute('y', p.y + 40);
+            meta.setAttribute('text-anchor', 'middle');
+            meta.setAttribute('class', 'dag-meta');
+            meta.textContent = `${r.state} · ${r.steps} steps`;
+            g.appendChild(meta);
+
+            svg.appendChild(g);
+        });
+
+        // Clear previous SVG if any and insert
+        const existing = container.querySelector('svg');
+        if (existing) existing.remove();
+        container.insertBefore(svg, emptyEl);
+    }
+
     initRunsList();
     const activeTab = document.querySelector('.tab.active')?.dataset.tab;
     if (activeTab === 'charts') ensureChartsLoaded();
+    if (activeTab === 'forks') ensureForksLoaded();
     </script>
 </body>
 </html>
