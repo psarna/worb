@@ -97,6 +97,11 @@
         {{if .Runs}}
         <div class="runs-toolbar">
             <input type="text" class="chart-search" id="run-search" placeholder="Filter runs...">
+            <div class="runs-bulk-actions">
+                <button type="button" class="expand-collapse-btn pagination-btn" id="runs-mark-visible">Mark All Visible</button>
+                <button type="button" class="expand-collapse-btn pagination-btn" id="runs-clear-marked">Clear Marked</button>
+                <button type="button" class="expand-collapse-btn pagination-btn runs-delete-marked" id="runs-delete-marked" disabled>Delete Marked</button>
+            </div>
             <div class="runs-filter-count" id="runs-filter-count">{{len .Runs}} runs</div>
         </div>
         <div class="runs-pagination" id="runs-pagination-top" style="display:none;">
@@ -115,6 +120,7 @@
                     <th data-sort-key="steps" aria-sort="none">Steps</th>
                     <th data-sort-key="created" aria-sort="none">Created</th>
                     <th></th>
+                    <th class="runs-mark-col">Mark</th>
                 </tr>
             </thead>
             <tbody id="runs-table-body" data-pending-pagination="1">
@@ -131,6 +137,7 @@
                     <td>{{.HistoryLineCount}}</td>
                     <td style="color: var(--text-secondary);">{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
                     <td><button class="btn-delete" onclick="event.stopPropagation(); deleteRun('{{.ID}}', this)" title="Delete run"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5.33 4V2.67a1.33 1.33 0 011.34-1.34h2.66a1.33 1.33 0 011.34 1.34V4M12.67 4v9.33a1.33 1.33 0 01-1.34 1.34H4.67a1.33 1.33 0 01-1.34-1.34V4h9.34z"/></svg></button></td>
+                    <td class="runs-mark-cell"><input type="checkbox" class="run-mark-checkbox" aria-label="Mark run {{if .DisplayName}}{{.DisplayName}}{{else}}{{.Name}}{{end}}" onclick="event.stopPropagation()"></td>
                 </tr>
                 {{end}}
             </tbody>
@@ -386,6 +393,9 @@
         const sortableHeaders = Array.from(table.querySelectorAll('th[data-sort-key]'));
         const searchInput = document.getElementById('run-search');
         const countEl = document.getElementById('runs-filter-count');
+        const markVisibleBtn = document.getElementById('runs-mark-visible');
+        const clearMarkedBtn = document.getElementById('runs-clear-marked');
+        const deleteMarkedBtn = document.getElementById('runs-delete-marked');
         const pagers = [
             {
                 container: document.getElementById('runs-pagination-top'),
@@ -409,6 +419,7 @@
         let currentPage = 1;
         let filter = '';
         let allRows = [];
+        const selectedRunIDs = new Set();
         let sortKey = validSortKeys.has(initialURL.searchParams.get('sort')) ? initialURL.searchParams.get('sort') : '';
         let sortDirection = initialURL.searchParams.get('order') === 'desc' ? 'desc' : 'asc';
 
@@ -418,6 +429,15 @@
                 const row = allRows[i];
                 row.dataset.filterLower = (row.dataset.runFilter || '').toLowerCase();
                 if (!row.dataset.initialIndex) row.dataset.initialIndex = String(i);
+                const checkbox = row.querySelector('.run-mark-checkbox');
+                if (checkbox && !checkbox.dataset.bound) {
+                    checkbox.dataset.bound = '1';
+                    checkbox.addEventListener('change', () => {
+                        if (checkbox.checked) selectedRunIDs.add(row.dataset.runId);
+                        else selectedRunIDs.delete(row.dataset.runId);
+                        updateBulkActions();
+                    });
+                }
             }
         }
 
@@ -512,6 +532,25 @@
             pager.links.appendChild(frag);
         }
 
+        function visibleRows() {
+            return allRows.filter(row => row.style.display !== 'none');
+        }
+
+        function syncSelectionUI() {
+            for (const row of allRows) {
+                const checkbox = row.querySelector('.run-mark-checkbox');
+                if (checkbox) checkbox.checked = selectedRunIDs.has(row.dataset.runId);
+            }
+        }
+
+        function updateBulkActions() {
+            const visible = visibleRows();
+            const selectedVisible = visible.filter(row => selectedRunIDs.has(row.dataset.runId)).length;
+            const selectedTotal = selectedRunIDs.size;
+            deleteMarkedBtn.disabled = selectedTotal === 0;
+            countEl.textContent = `${filteredRows().length} run${filteredRows().length === 1 ? '' : 's'}${selectedTotal ? ` • ${selectedTotal} marked` : ''}${selectedVisible && selectedVisible !== selectedTotal ? ` • ${selectedVisible} visible marked` : ''}`;
+        }
+
         function render() {
             applySort();
             syncRowOrder();
@@ -530,7 +569,8 @@
             table.style.display = total === 0 ? 'none' : 'table';
             empty.style.display = total === 0 ? '' : 'none';
             for (const pager of pagers) renderPager(pager, total, start, end, pageCount);
-            countEl.textContent = `${total} run${total === 1 ? '' : 's'}`;
+            syncSelectionUI();
+            updateBulkActions();
         }
 
         searchInput.addEventListener('input', (e) => {
@@ -575,8 +615,47 @@
         }
 
         document.addEventListener('runs:changed', () => {
+            const liveRows = new Set(Array.from(tbody.querySelectorAll('tr[data-run-id]')).map(row => row.dataset.runId));
+            for (const runID of Array.from(selectedRunIDs)) {
+                if (!liveRows.has(runID)) selectedRunIDs.delete(runID);
+            }
             collectRows();
             render();
+        });
+
+        markVisibleBtn.addEventListener('click', () => {
+            for (const row of visibleRows()) selectedRunIDs.add(row.dataset.runId);
+            syncSelectionUI();
+            updateBulkActions();
+        });
+
+        clearMarkedBtn.addEventListener('click', () => {
+            selectedRunIDs.clear();
+            syncSelectionUI();
+            updateBulkActions();
+        });
+
+        deleteMarkedBtn.addEventListener('click', async () => {
+            const ids = Array.from(selectedRunIDs);
+            if (ids.length === 0) return;
+            if (!confirm(`Delete ${ids.length} marked run${ids.length === 1 ? '' : 's'} and all associated data? This cannot be undone.`)) return;
+            deleteMarkedBtn.disabled = true;
+            try {
+                for (const runID of ids) {
+                    const resp = await fetch(`/api/runs/${runID}`, { method: 'DELETE' });
+                    if (!resp.ok) {
+                        const text = await resp.text();
+                        throw new Error(text);
+                    }
+                    const row = tbody.querySelector(`tr[data-run-id="${runID}"]`);
+                    if (row) row.remove();
+                    selectedRunIDs.delete(runID);
+                }
+                document.dispatchEvent(new CustomEvent('runs:changed'));
+            } catch (e) {
+                alert('Failed to delete marked runs: ' + e.message);
+                updateBulkActions();
+            }
         });
 
         collectRows();
