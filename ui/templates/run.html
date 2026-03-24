@@ -34,17 +34,21 @@
             <span class="badge {{.Run.State}}">{{.Run.State}}</span>{{if gt .Run.ReceivedHistoryCount .Run.HistoryLineCount}}<span class="processing-wrap" data-tip="{{.Run.HistoryLineCount}} / {{.Run.ReceivedHistoryCount}} steps processed"><span class="processing-spinner"></span></span>{{end}}
             <button class="btn-delete" onclick="deleteRun()" title="Delete this run"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5.33 4V2.67a1.33 1.33 0 011.34-1.34h2.66a1.33 1.33 0 011.34 1.34V4M12.67 4v9.33a1.33 1.33 0 01-1.34 1.34H4.67a1.33 1.33 0 01-1.34-1.34V4h9.34z"/></svg></button>
         </div>
-        {{if .ParentRun}}
+        {{if .ForkLineage}}
         <div class="fork-context">
-            <div class="fork-context-main">
-                <span class="badge forked">fork</span>
-                <span>Forked from <a href="/runs/{{.ParentRun.ID}}">{{if .ParentRun.DisplayName}}{{.ParentRun.DisplayName}}{{else}}{{.ParentRun.Name}}{{end}}</a>{{if .ForkStepDisplay}} at step {{.ForkStepDisplay}}{{end}}</span>
+            {{range .ForkLineage}}
+            <div class="fork-context-item" style="--fork-depth: {{.Depth}};">
+                <div class="fork-context-main">
+                    <span class="badge forked">fork</span>
+                    <span>Forked from <a href="/runs/{{.Run.ID}}">{{if .Run.DisplayName}}{{.Run.DisplayName}}{{else}}{{.Run.Name}}{{end}}</a>{{if .ForkStepDisplay}} at step {{.ForkStepDisplay}}{{end}}</span>
+                </div>
+                <div class="fork-context-meta">
+                    <span class="badge {{.Run.State}}">{{.Run.State}}</span>
+                    <span>{{.Run.HistoryLineCount}} steps</span>
+                    <span>{{.Run.CreatedAt.Format "2006-01-02 15:04"}}</span>
+                </div>
             </div>
-            <div class="fork-context-meta">
-                <span class="badge {{.ParentRun.State}}">{{.ParentRun.State}}</span>
-                <span>{{.ParentRun.HistoryLineCount}} steps</span>
-                <span>{{.ParentRun.CreatedAt.Format "2006-01-02 15:04"}}</span>
-            </div>
+            {{end}}
         </div>
         {{end}}
 
@@ -115,19 +119,8 @@
                 <div class="overview-tags" id="overview-tags"></div>
             </div>
             <div class="overview-section" id="overview-parent-section" style="display:none;">
-                <h3 class="overview-heading">Parent Run</h3>
-                <div class="fork-parent-card">
-                    <div class="fork-parent-title" id="overview-parent-title"></div>
-                    <table class="config-table" id="overview-parent-table">
-                        <tbody></tbody>
-                    </table>
-                    <div id="overview-parent-summary-section" style="display:none; margin-top: 16px;">
-                        <h3 class="overview-heading" style="margin-bottom: 8px;">Parent Summary Preview</h3>
-                        <table class="config-table" id="overview-parent-summary-table">
-                            <tbody></tbody>
-                        </table>
-                    </div>
-                </div>
+                <h3 class="overview-heading">Fork Lineage</h3>
+                <div id="overview-lineage"></div>
             </div>
             <div class="overview-section">
                 <h3 class="overview-heading">Run Info</h3>
@@ -1325,10 +1318,15 @@ ORDER BY step LIMIT 20</textarea>
 
     function renderTable(tableId, obj) {
         const tbody = document.querySelector(`#${tableId} tbody`);
+        renderTableBody(tbody, obj);
+    }
+
+    function renderTableBody(tbody, obj) {
         if (!obj || Object.keys(obj).length === 0) {
             tbody.innerHTML = '<tr><td colspan="2" style="color: var(--text-secondary); text-align: center;">Empty</td></tr>';
             return;
         }
+        tbody.innerHTML = '';
         Object.keys(obj).sort().forEach(key => {
             const tr = document.createElement('tr');
             let val = obj[key];
@@ -1361,7 +1359,7 @@ ORDER BY step LIMIT 20</textarea>
         const notes = {{.NotesJSON}};
         const config = {{.ConfigJSON}};
         const runMeta = {{.RunMetaJSON}};
-        const parentPreview = {{.ParentPreviewJSON}};
+        const forkLineage = {{.ForkLineageJSON}};
 
         if (notes) {
             document.getElementById('overview-notes-section').style.display = '';
@@ -1408,24 +1406,45 @@ ORDER BY step LIMIT 20</textarea>
 
         renderTable('overview-table', info);
 
-        if (parentPreview) {
+        if (forkLineage && forkLineage.length > 0) {
             document.getElementById('overview-parent-section').style.display = '';
-            document.getElementById('overview-parent-title').innerHTML = `Forked from <a href="/runs/${parentPreview.id}">${parentPreview.label}</a>`;
-            const parentInfo = {
-                'State': parentPreview.state,
-                'Run name': parentPreview.name,
-                'Display name': parentPreview.displayName || undefined,
-                'Start time': parentPreview.createdAt,
-                'Steps': parentPreview.steps,
-            };
-            Object.keys(parentInfo).forEach(key => {
-                if (parentInfo[key] === undefined || parentInfo[key] === '') delete parentInfo[key];
+            const lineageContainer = document.getElementById('overview-lineage');
+            forkLineage.forEach(item => {
+                const card = document.createElement('div');
+                card.className = 'fork-parent-card';
+                card.style.setProperty('--fork-depth', item.depth || 0);
+
+                const title = document.createElement('div');
+                title.className = 'fork-parent-title';
+                title.innerHTML = `Forked from <a href="/runs/${item.id}">${item.label}</a>${item.forkStep ? ` at step ${item.forkStep}` : ''}`;
+                card.appendChild(title);
+
+                const table = document.createElement('table');
+                table.className = 'config-table';
+                table.innerHTML = '<tbody></tbody>';
+                const parentInfo = {
+                    'State': item.state,
+                    'Run name': item.name,
+                    'Display name': item.displayName || undefined,
+                    'Start time': item.createdAt,
+                    'Steps': item.steps,
+                };
+                Object.keys(parentInfo).forEach(key => {
+                    if (parentInfo[key] === undefined || parentInfo[key] === '') delete parentInfo[key];
+                });
+                renderTableBody(table.querySelector('tbody'), parentInfo);
+                card.appendChild(table);
+
+                if (item.summary && Object.keys(item.summary).length > 0) {
+                    const summarySection = document.createElement('div');
+                    summarySection.className = 'fork-parent-summary';
+                    summarySection.innerHTML = '<h3 class="overview-heading" style="margin-bottom: 8px;">Summary Preview</h3><table class="config-table"><tbody></tbody></table>';
+                    renderTableBody(summarySection.querySelector('tbody'), item.summary);
+                    card.appendChild(summarySection);
+                }
+
+                lineageContainer.appendChild(card);
             });
-            renderTable('overview-parent-table', parentInfo);
-            if (parentPreview.summary && Object.keys(parentPreview.summary).length > 0) {
-                document.getElementById('overview-parent-summary-section').style.display = '';
-                renderTable('overview-parent-summary-table', parentPreview.summary);
-            }
         }
     }
 

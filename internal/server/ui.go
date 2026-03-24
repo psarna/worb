@@ -70,10 +70,7 @@ func (s *Server) uiRun(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	project, _ := s.store.GetProject(run.ProjectID)
-	var parentRun *store.Run
-	if run.ForkRunID != nil {
-		parentRun, _ = s.store.GetRun(*run.ForkRunID)
-	}
+	lineage := s.buildForkLineage(run)
 
 	configJSON := template.JS("{}")
 	if run.Config != nil {
@@ -107,25 +104,19 @@ func (s *Server) uiRun(w http.ResponseWriter, r *http.Request) {
 		"updated_at_iso": run.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	}
 	runMetaBytes, _ := json.Marshal(runMeta)
-	parentPreviewBytes, _ := json.Marshal(buildParentPreview(parentRun))
-
-	forkStepDisplay := ""
-	if run.ForkStep != nil {
-		forkStepDisplay = strconv.Itoa(*run.ForkStep)
-	}
+	lineagePreviewBytes, _ := json.Marshal(buildForkLineagePreview(lineage))
 
 	templates.ExecuteTemplate(w, "run.html", map[string]any{
-		"Run":               run,
-		"Project":           project,
-		"ParentRun":         parentRun,
-		"ForkStepDisplay":   forkStepDisplay,
-		"ParentPreviewJSON": template.JS(parentPreviewBytes),
-		"ConfigJSON":        configJSON,
-		"SummaryJSON":       summaryJSON,
-		"TagsJSON":          tagsJSON,
-		"NotesJSON":         template.JS(notesBytes),
-		"RunMetaJSON":       template.JS(runMetaBytes),
-		"DBEngine":          s.config.DBEngine,
+		"Run":             run,
+		"Project":         project,
+		"ForkLineage":     lineage,
+		"ForkLineageJSON": template.JS(lineagePreviewBytes),
+		"ConfigJSON":      configJSON,
+		"SummaryJSON":     summaryJSON,
+		"TagsJSON":        tagsJSON,
+		"NotesJSON":       template.JS(notesBytes),
+		"RunMetaJSON":     template.JS(runMetaBytes),
+		"DBEngine":        s.config.DBEngine,
 	})
 }
 
@@ -145,20 +136,63 @@ func runLabel(run *store.Run) string {
 	return run.Name
 }
 
-func buildParentPreview(run *store.Run) map[string]any {
-	if run == nil {
+type forkLineageItem struct {
+	Run             *store.Run
+	ForkStepDisplay string
+	Depth           int
+}
+
+func (s *Server) buildForkLineage(run *store.Run) []forkLineageItem {
+	var lineage []forkLineageItem
+	seen := map[string]bool{}
+	current := run
+	depth := 0
+	for current != nil && current.ForkRunID != nil {
+		parentID := *current.ForkRunID
+		if seen[parentID] {
+			break
+		}
+		seen[parentID] = true
+		parent, err := s.store.GetRun(parentID)
+		if err != nil || parent == nil {
+			break
+		}
+		forkStepDisplay := ""
+		if current.ForkStep != nil {
+			forkStepDisplay = strconv.Itoa(*current.ForkStep)
+		}
+		lineage = append(lineage, forkLineageItem{
+			Run:             parent,
+			ForkStepDisplay: forkStepDisplay,
+			Depth:           depth,
+		})
+		current = parent
+		depth++
+	}
+	return lineage
+}
+
+func buildForkLineagePreview(lineage []forkLineageItem) []map[string]any {
+	if len(lineage) == 0 {
 		return nil
 	}
-	return map[string]any{
-		"id":          run.ID,
-		"name":        run.Name,
-		"displayName": run.DisplayName,
-		"label":       runLabel(run),
-		"state":       run.State,
-		"steps":       run.HistoryLineCount,
-		"createdAt":   run.CreatedAt.Format("Jan 2, 2006 3:04:05 PM"),
-		"summary":     previewSummary(run.Summary),
+	preview := make([]map[string]any, 0, len(lineage))
+	for _, item := range lineage {
+		run := item.Run
+		preview = append(preview, map[string]any{
+			"id":          run.ID,
+			"name":        run.Name,
+			"displayName": run.DisplayName,
+			"label":       runLabel(run),
+			"state":       run.State,
+			"steps":       run.HistoryLineCount,
+			"createdAt":   run.CreatedAt.Format("Jan 2, 2006 3:04:05 PM"),
+			"forkStep":    item.ForkStepDisplay,
+			"depth":       item.Depth,
+			"summary":     previewSummary(run.Summary),
+		})
 	}
+	return preview
 }
 
 func previewSummary(raw json.RawMessage) map[string]string {

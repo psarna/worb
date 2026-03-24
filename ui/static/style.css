@@ -129,6 +129,16 @@ h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
     margin: -8px 0 24px;
 }
 
+.fork-context-item {
+    margin-left: calc(var(--fork-depth, 0) * 18px);
+}
+
+.fork-context-item + .fork-context-item {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
 .fork-context-main {
     display: flex;
     align-items: center;
@@ -150,11 +160,20 @@ h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 14px 16px;
+    margin-left: calc(var(--fork-depth, 0) * 18px);
+}
+
+.fork-parent-card + .fork-parent-card {
+    margin-top: 12px;
 }
 
 .fork-parent-title {
     font-size: 14px;
     margin-bottom: 12px;
+}
+
+.fork-parent-summary {
+    margin-top: 16px;
 }
 
 .run-parent-link {
