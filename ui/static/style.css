@@ -1088,7 +1088,64 @@ table tr:hover { background: rgba(255,255,255,0.02); }
     text-align: center;
 }
 
+.forks-layout {
+    display: flex;
+    gap: 18px;
+    align-items: flex-start;
+}
+
+.forks-sidebar {
+    width: 260px;
+    flex: 0 0 260px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    padding: 12px;
+    position: sticky;
+    top: 12px;
+}
+
+.fork-tree-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 8px;
+    border-radius: 8px;
+}
+
+.fork-tree-item:hover {
+    background: rgba(255,255,255,0.03);
+}
+
+.fork-tree-item input {
+    margin-top: 2px;
+}
+
+.fork-tree-label {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+    color: var(--text);
+    cursor: pointer;
+}
+
+.fork-tree-name {
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fork-tree-meta {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
 .dag-container {
+    flex: 1;
+    min-width: 0;
     width: 100%;
     overflow: auto;
     padding: 16px 0;
@@ -1097,6 +1154,36 @@ table tr:hover { background: rgba(255,255,255,0.02); }
 .dag-container svg {
     display: block;
     margin: 0 auto;
+}
+
+.dag-axis-line,
+.dag-axis-tick,
+.dag-grid-line,
+.dag-spine {
+    fill: none;
+}
+
+.dag-axis-line,
+.dag-axis-tick {
+    stroke: var(--border);
+    stroke-width: 1.5;
+}
+
+.dag-grid-line {
+    stroke: rgba(255,255,255,0.06);
+    stroke-width: 1;
+}
+
+.dag-spine {
+    stroke: rgba(255,255,255,0.18);
+    stroke-width: 2;
+}
+
+.dag-axis-label,
+.dag-edge-label {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size: 10px;
+    fill: var(--text-secondary);
 }
 
 .dag-node {
@@ -1135,16 +1222,6 @@ table tr:hover { background: rgba(255,255,255,0.02); }
     fill: none;
     stroke: var(--border);
     stroke-width: 1.5;
-}
-
-.dag-edge-label {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
-    font-size: 10px;
-    fill: var(--text-secondary);
-}
-
-.dag-arrowhead {
-    fill: var(--border);
 }
 
 .crosshair-tooltip {

@@ -161,8 +161,18 @@
         </div>
 
         <div id="forks" class="tab-content">
-            <div class="dag-container" id="dag-container">
-                <div class="empty-state" id="dag-empty" style="display:none;">No forks in this project.</div>
+            <div class="forks-layout">
+                <div class="forks-sidebar" id="forks-sidebar">
+                    <div class="sidebar-header">Trees <span class="sidebar-count" id="fork-tree-count">0</span></div>
+                    <div class="sidebar-bulk" id="forks-bulk" style="display:none;">
+                        <button type="button" class="sidebar-bulk-btn" id="forks-show-top">Show top 2</button>
+                        <button type="button" class="sidebar-bulk-btn" id="forks-show-all">Show all</button>
+                    </div>
+                    <div class="sidebar-runs" id="fork-tree-list"></div>
+                </div>
+                <div class="dag-container" id="dag-container">
+                    <div class="empty-state" id="dag-empty" style="display:none;">No forks in this project.</div>
+                </div>
             </div>
         </div>
     </div>
@@ -2000,97 +2010,257 @@
         reapplySettings();
     });
 
-    // ── Forks DAG ──────────────────────────────────────────────
-    const allRuns = {{.RunsJSON}};
-    let forksLoaded = false;
+    var allRuns = {{.RunsJSON}};
+    var forksLoaded = false;
+    var forkState = null;
+    var selectedForkTreeIDs = {};
+    var forkDefaultVisibleCount = 2;
 
     function ensureForksLoaded() {
-        if (forksLoaded) return;
+        if (!forkState) forkState = buildForkState();
         forksLoaded = true;
+        renderForkTreeSidebar();
         renderDAG();
     }
 
-    function renderDAG() {
-        const container = document.getElementById('dag-container');
-        const emptyEl = document.getElementById('dag-empty');
-
-        // Build parent→children map
+    function buildForkState() {
+        const runs = Array.isArray(allRuns) ? allRuns : [];
         const byId = {};
-        allRuns.forEach(r => byId[r.id] = r);
-        const children = {};   // parentID → [{run, forkStep}]
+        runs.forEach(r => byId[r.id] = r);
+        const children = {};
         const hasParent = {};
-        allRuns.forEach(r => {
+        runs.forEach(r => {
             if (r.forkRunID && byId[r.forkRunID]) {
                 if (!children[r.forkRunID]) children[r.forkRunID] = [];
                 children[r.forkRunID].push(r);
                 hasParent[r.id] = true;
             }
         });
-
-        // Only show runs that are part of a fork tree (have parent or children)
         const inTree = {};
-        allRuns.forEach(r => {
+        runs.forEach(r => {
             if (hasParent[r.id] || children[r.id]) inTree[r.id] = true;
         });
-        const treeRuns = allRuns.filter(r => inTree[r.id]);
+        const treeRuns = runs.filter(r => inTree[r.id]);
+        const roots = treeRuns.filter(r => !hasParent[r.id]);
+        roots.sort((a, b) => (a.label || a.id).localeCompare(b.label || b.id));
+        for (const parentID in children) {
+            const list = children[parentID];
+            if (!Array.isArray(list)) continue;
+            list.sort((a, b) => {
+                const stepDelta = (a.forkStep ?? 0) - (b.forkStep ?? 0);
+                if (stepDelta !== 0) return stepDelta;
+                return (a.label || a.id).localeCompare(b.label || b.id);
+            });
+        }
+
+        const rootByRunID = {};
+        const trees = roots.map(root => {
+            const runIDs = [];
+            const stack = [root];
+            while (stack.length) {
+                const run = stack.pop();
+                if (!run || rootByRunID[run.id]) continue;
+                rootByRunID[run.id] = root.id;
+                runIDs.push(run.id);
+                const childRuns = children[run.id] || [];
+                for (let i = childRuns.length - 1; i >= 0; i--) stack.push(childRuns[i]);
+            }
+            return {
+                id: root.id,
+                label: root.label || root.id,
+                runCount: runIDs.length,
+                runIDs: runIDs,
+            };
+        });
+
+        let selectedTreeIDs = selectedForkTreeIDs || {};
+        if (Object.keys(selectedTreeIDs).length === 0) {
+            trees.slice(0, forkDefaultVisibleCount).forEach(tree => {
+                selectedTreeIDs[tree.id] = true;
+            });
+        } else {
+            const nextSelected = {};
+            trees.forEach(tree => {
+                if (selectedTreeIDs[tree.id]) nextSelected[tree.id] = true;
+            });
+            selectedTreeIDs = nextSelected;
+            if (Object.keys(selectedTreeIDs).length === 0) {
+                trees.slice(0, forkDefaultVisibleCount).forEach(tree => {
+                    selectedTreeIDs[tree.id] = true;
+                });
+            }
+        }
+        selectedForkTreeIDs = selectedTreeIDs;
+
+        return {
+            children: children,
+            treeRuns: treeRuns,
+            roots: roots,
+            trees: trees,
+            rootByRunID: rootByRunID,
+        };
+    }
+
+    function renderForkTreeSidebar() {
+        const sidebar = document.getElementById('forks-sidebar');
+        const bulk = document.getElementById('forks-bulk');
+        const countEl = document.getElementById('fork-tree-count');
+        const listEl = document.getElementById('fork-tree-list');
+        if (!sidebar || !bulk || !countEl || !listEl) return;
+
+        const trees = forkState ? forkState.trees : [];
+        countEl.textContent = String(trees.length);
+        sidebar.style.display = trees.length ? '' : 'none';
+        bulk.style.display = trees.length > forkDefaultVisibleCount ? '' : 'none';
+        listEl.innerHTML = '';
+
+        trees.forEach(tree => {
+            const item = document.createElement('label');
+            item.className = 'fork-tree-item';
+
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.checked = !!selectedForkTreeIDs[tree.id];
+            checkbox.addEventListener('change', () => {
+                if (checkbox.checked) selectedForkTreeIDs[tree.id] = true;
+                else delete selectedForkTreeIDs[tree.id];
+                renderDAG();
+            });
+            item.appendChild(checkbox);
+
+            const text = document.createElement('span');
+            text.className = 'fork-tree-label';
+
+            const name = document.createElement('span');
+            name.className = 'fork-tree-name';
+            name.textContent = tree.label;
+            text.appendChild(name);
+
+            const meta = document.createElement('span');
+            meta.className = 'fork-tree-meta';
+            meta.textContent = `${tree.runCount} runs`;
+            text.appendChild(meta);
+
+            item.appendChild(text);
+            listEl.appendChild(item);
+        });
+
+        const showTopBtn = document.getElementById('forks-show-top');
+        const showAllBtn = document.getElementById('forks-show-all');
+        if (showTopBtn && !showTopBtn.dataset.bound) {
+            showTopBtn.dataset.bound = '1';
+            showTopBtn.addEventListener('click', () => {
+                selectedForkTreeIDs = {};
+                (forkState ? forkState.trees : []).slice(0, forkDefaultVisibleCount).forEach(tree => {
+                    selectedForkTreeIDs[tree.id] = true;
+                });
+                renderForkTreeSidebar();
+                renderDAG();
+            });
+        }
+        if (showAllBtn && !showAllBtn.dataset.bound) {
+            showAllBtn.dataset.bound = '1';
+            showAllBtn.addEventListener('click', () => {
+                selectedForkTreeIDs = {};
+                (forkState ? forkState.trees : []).forEach(tree => {
+                    selectedForkTreeIDs[tree.id] = true;
+                });
+                renderForkTreeSidebar();
+                renderDAG();
+            });
+        }
+    }
+
+    function renderDAG() {
+        const container = document.getElementById('dag-container');
+        const emptyEl = document.getElementById('dag-empty');
+        const state = forkState || buildForkState();
+        forkState = state;
+
+        const existing = container.querySelector('svg');
+        if (existing) existing.remove();
+
+        const visibleRootIDs = new Set();
+        state.trees.forEach(tree => {
+            if (selectedForkTreeIDs[tree.id]) visibleRootIDs.add(tree.id);
+        });
+        const treeRuns = state.treeRuns.filter(r => visibleRootIDs.has(state.rootByRunID[r.id]));
         if (treeRuns.length === 0) {
+            emptyEl.textContent = state.trees.length ? 'No fork trees selected.' : 'No forks in this project.';
             emptyEl.style.display = '';
             return;
         }
         emptyEl.style.display = 'none';
 
-        // BFS to assign depth levels starting from roots
-        const roots = treeRuns.filter(r => !hasParent[r.id]);
-        const depth = {};
-        const queue = [];
-        roots.forEach(r => { depth[r.id] = 0; queue.push(r.id); });
-        while (queue.length) {
-            const id = queue.shift();
-            (children[id] || []).forEach(c => {
-                depth[c.id] = depth[id] + 1;
-                queue.push(c.id);
+        const children = {};
+        treeRuns.forEach(r => { children[r.id] = []; });
+        treeRuns.forEach(r => {
+            if (r.forkRunID && children[r.forkRunID]) children[r.forkRunID].push(r);
+        });
+        for (const parentID in children) {
+            children[parentID].sort((a, b) => {
+                const stepDelta = (a.forkStep ?? 0) - (b.forkStep ?? 0);
+                if (stepDelta !== 0) return stepDelta;
+                return (a.label || a.id).localeCompare(b.label || b.id);
             });
         }
+        const roots = state.roots.filter(r => visibleRootIDs.has(r.id));
 
-        // Group by depth level
-        const levels = {};
-        let maxDepth = 0;
+        const lane = {};
+        let nextLane = 0;
+        function takeLane() {
+            const n = nextLane;
+            nextLane++;
+            return n;
+        }
+        function assignLanes(run, assignedLane) {
+            lane[run.id] = assignedLane;
+            (children[run.id] || []).forEach(child => {
+                assignLanes(child, takeLane());
+            });
+        }
+        roots.forEach(root => assignLanes(root, takeLane()));
+
+        const startStep = {};
+        const maxChildForkStep = {};
         treeRuns.forEach(r => {
-            const d = depth[r.id] ?? 0;
-            if (!levels[d]) levels[d] = [];
-            levels[d].push(r);
-            if (d > maxDepth) maxDepth = d;
+            startStep[r.id] = r.forkStep ?? 0;
+            maxChildForkStep[r.id] = 0;
+        });
+        treeRuns.forEach(r => {
+            if (r.forkRunID && maxChildForkStep[r.forkRunID] != null) {
+                maxChildForkStep[r.forkRunID] = Math.max(maxChildForkStep[r.forkRunID], r.forkStep ?? 0);
+            }
         });
 
-        // Layout constants
-        const nodeW = 180, nodeH = 52;
-        const hGap = 32, vGap = 64;
-        const padX = 24, padY = 24;
+        const extentStep = {};
+        let maxStep = 1;
+        treeRuns.forEach(r => {
+            const start = startStep[r.id];
+            const extent = Math.max(start + 1, r.steps || 0, maxChildForkStep[r.id] || 0);
+            extentStep[r.id] = extent;
+            maxStep = Math.max(maxStep, extent);
+        });
 
-        // Assign positions
-        const pos = {};  // id → {x, y}
-        let maxLevelW = 0;
-        for (let d = 0; d <= maxDepth; d++) {
-            const lvl = levels[d] || [];
-            const levelW = lvl.length * nodeW + (lvl.length - 1) * hGap;
-            if (levelW > maxLevelW) maxLevelW = levelW;
-        }
-        for (let d = 0; d <= maxDepth; d++) {
-            const lvl = levels[d] || [];
-            const levelW = lvl.length * nodeW + (lvl.length - 1) * hGap;
-            const offsetX = (maxLevelW - levelW) / 2;
-            lvl.forEach((r, i) => {
-                pos[r.id] = {
-                    x: padX + offsetX + i * (nodeW + hGap),
-                    y: padY + d * (nodeH + vGap),
-                };
-            });
-        }
+        const nodeW = 184;
+        const nodeH = 54;
+        const laneGap = 28;
+        const axisGutter = 72;
+        const padX = 24;
+        const padY = 24;
+        const minStepGap = 72;
+        const pxPerStep = Math.max(2, Math.min(14, minStepGap / Math.max(1, maxStep)));
+        const lanePitch = nodeW + laneGap;
+        const pos = {};
+        treeRuns.forEach(r => {
+            pos[r.id] = {
+                x: padX + axisGutter + lane[r.id] * lanePitch,
+                y: padY + extentStep[r.id] * pxPerStep,
+            };
+        });
 
-        const svgW = maxLevelW + padX * 2;
-        const svgH = (maxDepth + 1) * nodeH + maxDepth * vGap + padY * 2;
-
-        // State colors
+        const svgW = padX * 2 + axisGutter + Math.max(1, nextLane) * nodeW + Math.max(0, nextLane - 1) * laneGap;
+        const svgH = padY * 2 + maxStep * pxPerStep + nodeH;
         const stateColors = {
             running:  { fill: 'rgba(56,166,80,0.2)',  stroke: '#3fb950' },
             finished: { fill: 'rgba(88,166,255,0.2)', stroke: '#58a6ff' },
@@ -2098,63 +2268,90 @@
             failed:   { fill: 'rgba(248,81,73,0.2)',  stroke: '#f85149' },
         };
         const defaultColor = { fill: 'rgba(139,148,158,0.2)', stroke: '#8b949e' };
-
-        // Build SVG
         const ns = 'http://www.w3.org/2000/svg';
         const svg = document.createElementNS(ns, 'svg');
         svg.setAttribute('width', svgW);
         svg.setAttribute('height', svgH);
         svg.setAttribute('viewBox', `0 0 ${svgW} ${svgH}`);
 
-        // Arrowhead marker
-        const defs = document.createElementNS(ns, 'defs');
-        const marker = document.createElementNS(ns, 'marker');
-        marker.setAttribute('id', 'dag-arrow');
-        marker.setAttribute('viewBox', '0 0 10 7');
-        marker.setAttribute('refX', '10');
-        marker.setAttribute('refY', '3.5');
-        marker.setAttribute('markerWidth', '8');
-        marker.setAttribute('markerHeight', '6');
-        marker.setAttribute('orient', 'auto-start-reverse');
-        const arrow = document.createElementNS(ns, 'polygon');
-        arrow.setAttribute('points', '0 0, 10 3.5, 0 7');
-        arrow.setAttribute('class', 'dag-arrowhead');
-        marker.appendChild(arrow);
-        defs.appendChild(marker);
-        svg.appendChild(defs);
+        const tickStep = Math.max(1, Math.ceil(maxStep / 8));
+        for (let step = 0; step <= maxStep; step += tickStep) {
+            const y = padY + step * pxPerStep;
+            const tick = document.createElementNS(ns, 'line');
+            tick.setAttribute('x1', padX + axisGutter - 8);
+            tick.setAttribute('x2', padX + axisGutter);
+            tick.setAttribute('y1', y);
+            tick.setAttribute('y2', y);
+            tick.setAttribute('class', 'dag-axis-tick');
+            svg.appendChild(tick);
 
-        // Draw edges
+            const label = document.createElementNS(ns, 'text');
+            label.setAttribute('x', padX + axisGutter - 12);
+            label.setAttribute('y', y + 4);
+            label.setAttribute('text-anchor', 'end');
+            label.setAttribute('class', 'dag-axis-label');
+            label.textContent = step;
+            svg.appendChild(label);
+
+            const grid = document.createElementNS(ns, 'line');
+            grid.setAttribute('x1', padX + axisGutter);
+            grid.setAttribute('x2', svgW - padX);
+            grid.setAttribute('y1', y);
+            grid.setAttribute('y2', y);
+            grid.setAttribute('class', 'dag-grid-line');
+            svg.appendChild(grid);
+        }
+
+        const axis = document.createElementNS(ns, 'line');
+        axis.setAttribute('x1', padX + axisGutter);
+        axis.setAttribute('x2', padX + axisGutter);
+        axis.setAttribute('y1', padY);
+        axis.setAttribute('y2', svgH - padY);
+        axis.setAttribute('class', 'dag-axis-line');
+        svg.appendChild(axis);
+
+        treeRuns.forEach(r => {
+            const p = pos[r.id];
+            const spineX = p.x + nodeW / 2;
+            const spineTop = padY + startStep[r.id] * pxPerStep;
+            const spineBottom = p.y;
+            if (spineBottom > spineTop + 4) {
+                const spine = document.createElementNS(ns, 'line');
+                spine.setAttribute('x1', spineX);
+                spine.setAttribute('x2', spineX);
+                spine.setAttribute('y1', spineTop);
+                spine.setAttribute('y2', spineBottom);
+                spine.setAttribute('class', 'dag-spine');
+                svg.appendChild(spine);
+            }
+        });
+
         treeRuns.forEach(r => {
             if (!r.forkRunID || !pos[r.forkRunID]) return;
-            const parent = pos[r.forkRunID];
-            const child = pos[r.id];
-            const x1 = parent.x + nodeW / 2;
-            const y1 = parent.y + nodeH;
-            const x2 = child.x + nodeW / 2;
-            const y2 = child.y;
-            const midY = (y1 + y2) / 2;
+            const parentX = pos[r.forkRunID].x + nodeW / 2;
+            const y = padY + (r.forkStep ?? 0) * pxPerStep;
+            const childCenterX = pos[r.id].x + nodeW / 2;
+            if (parentX !== childCenterX) {
+                const edge = document.createElementNS(ns, 'line');
+                edge.setAttribute('x1', parentX);
+                edge.setAttribute('x2', childCenterX);
+                edge.setAttribute('y1', y);
+                edge.setAttribute('y2', y);
+                edge.setAttribute('class', 'dag-edge');
+                svg.appendChild(edge);
+            }
 
-            const path = document.createElementNS(ns, 'path');
-            path.setAttribute('d', `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`);
-            path.setAttribute('class', 'dag-edge');
-            path.setAttribute('marker-end', 'url(#dag-arrow)');
-            svg.appendChild(path);
-
-            // Edge label (fork step)
             if (r.forkStep != null) {
-                const lx = (x1 + x2) / 2;
-                const ly = midY - 4;
                 const label = document.createElementNS(ns, 'text');
-                label.setAttribute('x', lx);
-                label.setAttribute('y', ly);
-                label.setAttribute('text-anchor', 'middle');
+                label.setAttribute('x', parentX === childCenterX ? parentX + 8 : Math.min(parentX, childCenterX) + Math.abs(childCenterX - parentX) / 2);
+                label.setAttribute('y', y - 6);
+                label.setAttribute('text-anchor', parentX === childCenterX ? 'start' : 'middle');
                 label.setAttribute('class', 'dag-edge-label');
                 label.textContent = `step ${r.forkStep}`;
                 svg.appendChild(label);
             }
         });
 
-        // Draw nodes
         treeRuns.forEach(r => {
             const p = pos[r.id];
             const colors = stateColors[r.state] || defaultColor;
@@ -2172,7 +2369,6 @@
             rect.setAttribute('stroke', colors.stroke);
             g.appendChild(rect);
 
-            // Run name
             const nameText = document.createElementNS(ns, 'text');
             nameText.setAttribute('x', p.x + nodeW / 2);
             nameText.setAttribute('y', p.y + 22);
@@ -2182,21 +2378,17 @@
             nameText.textContent = displayLabel;
             g.appendChild(nameText);
 
-            // State + steps
             const meta = document.createElementNS(ns, 'text');
             meta.setAttribute('x', p.x + nodeW / 2);
             meta.setAttribute('y', p.y + 40);
             meta.setAttribute('text-anchor', 'middle');
             meta.setAttribute('class', 'dag-meta');
-            meta.textContent = `${r.state} · ${r.steps} steps`;
+            meta.textContent = `${r.state} · from ${startStep[r.id]} · ${r.steps} steps`;
             g.appendChild(meta);
 
             svg.appendChild(g);
         });
 
-        // Clear previous SVG if any and insert
-        const existing = container.querySelector('svg');
-        if (existing) existing.remove();
         container.insertBefore(svg, emptyEl);
     }
 
