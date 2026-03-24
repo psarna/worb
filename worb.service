@@ -1,0 +1,17 @@
+[Unit]
+Description=Worb - local wandb-compatible server
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/worb --host 0.0.0.0 --port 8080 --data /var/lib/worb
+Restart=on-failure
+RestartSec=5
+WorkingDirectory=/var/lib/worb
+
+DynamicUser=yes
+StateDirectory=worb
+Environment=HOME=/var/lib/worb
+
+[Install]
+WantedBy=multi-user.target

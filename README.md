@@ -58,6 +58,23 @@ uv run --no-project --with wandb python examples/bench_llm.py
 
 See `python examples/bench_llm.py --help` for all options.
 
+## systemd
+
+Build and install worb as a systemd service:
+
+```bash
+make install
+```
+
+This installs the binary to `/usr/local/bin`, sets up a systemd unit, and starts the service. Logs are available via `journalctl -u worb -f`.
+
+To customize flags (host, port, data dir), edit `/etc/systemd/system/worb.service` and restart:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart worb
+```
+
 ## Docker
 
 ```bash
@@ -67,7 +84,8 @@ docker run -v ~/.worb:/data -p 8080:8080 ghcr.io/psarna/worb --data /data
 ## Build
 
 ```bash
-go build .
+make
+# or just: go build .
 ```
 
 ## Flags
