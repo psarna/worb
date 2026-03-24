@@ -9,7 +9,8 @@ Restart=on-failure
 RestartSec=5
 WorkingDirectory=/var/lib/worb
 
-DynamicUser=yes
+User=worb
+Group=worb
 Environment=HOME=/var/lib/worb
 
 [Install]

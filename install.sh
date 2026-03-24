@@ -11,9 +11,17 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 if [ ! -f "$SCRIPT_DIR/worb" ]; then
-    echo "Binary not found. Building..."
-    (cd "$SCRIPT_DIR" && go build -o worb .)
+    echo "Binary not found. Run 'make' first."
+    exit 1
 fi
+
+if ! id -u worb &>/dev/null; then
+    echo "Creating worb user..."
+    useradd --system --no-create-home --shell /usr/sbin/nologin worb
+fi
+
+mkdir -p /var/lib/worb
+chown worb:worb /var/lib/worb
 
 echo "Installing binary to $INSTALL_DIR/worb"
 install -m 755 "$SCRIPT_DIR/worb" "$INSTALL_DIR/worb"
