@@ -167,6 +167,16 @@ func (db *DB) processCounters(items []counterDelta) error {
 func (db *DB) processForkOp(targetRunID string, op walForkOp) error {
 	log.Printf("[fork] starting copy run=%s parent=%s maxStep=%d", targetRunID[:8], op.ParentRunID[:8], op.MaxStep)
 
+	var maxStep int
+	if err := db.QueryRow("SELECT COALESCE(MAX(step), -1) FROM run_steps WHERE run_id = ?", op.ParentRunID).Scan(&maxStep); err != nil {
+		return fmt.Errorf("query parent max step: %w", err)
+	}
+	if op.MaxStep > maxStep {
+		msg := fmt.Sprintf("invalid fork_step %d: parent run has max step %d", op.MaxStep, maxStep)
+		_, _ = db.Exec("UPDATE runs SET state = 'failed', notes = ?, updated_at = current_timestamp WHERE id = ?", msg, targetRunID)
+		return fmt.Errorf("%s", msg)
+	}
+
 	// Copy scalars in batches
 	offset := 0
 	totalScalars := 0

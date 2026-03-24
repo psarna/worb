@@ -99,6 +99,9 @@ func newWAL(dataDir string) (*WAL, error) {
 	}
 
 	pos := readPosFile(filepath.Join(dataDir, "wal.pos"))
+	if pos > info.Size() {
+		pos = 0
+	}
 
 	w := &WAL{
 		file:     f,

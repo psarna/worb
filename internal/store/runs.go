@@ -509,30 +509,15 @@ type ForkRunParams struct {
 }
 
 func (db *DB) ForkRun(p ForkRunParams) (*Run, error) {
-	// Check parent run exists and has no unflushed WAL data
 	parent, err := db.GetRun(p.ParentRunID)
 	if err != nil {
 		return nil, fmt.Errorf("parent run not found: %s", p.ParentRunID)
 	}
-	if parent.ReceivedHistoryCount != parent.HistoryLineCount {
-		return nil, fmt.Errorf("parent run has unflushed data (%d received, %d flushed); finish the run or wait for WAL flush before forking",
-			parent.ReceivedHistoryCount, parent.HistoryLineCount)
-	}
 
-	// Validate fork_step
 	if p.ForkStep < 0 {
 		return nil, fmt.Errorf("invalid fork_step: must be >= 0")
 	}
-	var maxStep int
-	err = db.QueryRow("SELECT COALESCE(MAX(step), -1) FROM run_steps WHERE run_id = ?", p.ParentRunID).Scan(&maxStep)
-	if err != nil {
-		return nil, fmt.Errorf("query max step: %w", err)
-	}
-	if p.ForkStep > maxStep {
-		return nil, fmt.Errorf("invalid fork_step %d: parent run has max step %d", p.ForkStep, maxStep)
-	}
 
-	// Generate new run ID
 	newID := p.NewRunID
 	if newID == "" {
 		newID = uuid.New().String()
@@ -587,19 +572,11 @@ func (db *DB) ForkRun(p ForkRunParams) (*Run, error) {
 		}
 	}
 
-	// Set history_line_count synchronously so the wandb client gets the correct
-	// file offset and starts logging at fork_step+1 (not 0).
-	var parentStepCount int
-	err = db.QueryRow("SELECT COUNT(*) FROM run_steps WHERE run_id = ? AND step <= ?", p.ParentRunID, p.ForkStep).Scan(&parentStepCount)
-	if err != nil {
-		return nil, fmt.Errorf("count parent steps: %w", err)
-	}
-	_, err = db.Exec("UPDATE runs SET history_line_count = ? WHERE id = ?", parentStepCount, newID)
+	_, err = db.Exec("UPDATE runs SET history_line_count = ? WHERE id = ?", p.ForkStep+1, newID)
 	if err != nil {
 		return nil, fmt.Errorf("set history_line_count: %w", err)
 	}
 
-	// Enqueue WAL fork entry for async data copy
 	err = db.wal.Append(walEntry{
 		RunID:    newID,
 		ForkFrom: &walForkOp{ParentRunID: p.ParentRunID, MaxStep: p.ForkStep},
