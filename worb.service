@@ -10,7 +10,6 @@ RestartSec=5
 WorkingDirectory=/var/lib/worb
 
 DynamicUser=yes
-StateDirectory=worb
 Environment=HOME=/var/lib/worb
 
 [Install]
