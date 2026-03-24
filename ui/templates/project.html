@@ -97,11 +97,6 @@
         {{if .Runs}}
         <div class="runs-toolbar">
             <input type="text" class="chart-search" id="run-search" placeholder="Filter runs...">
-            <div class="runs-bulk-actions">
-                <button type="button" class="expand-collapse-btn pagination-btn" id="runs-mark-visible">Mark All Visible</button>
-                <button type="button" class="expand-collapse-btn pagination-btn" id="runs-clear-marked">Clear Marked</button>
-                <button type="button" class="expand-collapse-btn pagination-btn runs-delete-marked" id="runs-delete-marked" disabled>Delete Marked</button>
-            </div>
             <div class="runs-filter-count" id="runs-filter-count">{{len .Runs}} runs</div>
         </div>
         <div class="runs-pagination" id="runs-pagination-top" style="display:none;">
@@ -120,7 +115,15 @@
                     <th data-sort-key="steps" aria-sort="none">Steps</th>
                     <th data-sort-key="created" aria-sort="none">Created</th>
                     <th></th>
-                    <th class="runs-mark-col">Mark</th>
+                    <th class="runs-mark-col">
+                        <span class="runs-mark-header">
+                            <input type="checkbox" id="runs-mark-visible" class="run-mark-checkbox" aria-label="Mark visible runs">
+                            <span>Mark</span>
+                            <button type="button" class="runs-header-trash" id="runs-delete-marked" title="Delete marked visible runs" disabled>
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4h12M5.33 4V2.67a1.33 1.33 0 011.34-1.34h2.66a1.33 1.33 0 011.34 1.34V4M12.67 4v9.33a1.33 1.33 0 01-1.34 1.34H4.67a1.33 1.33 0 01-1.34-1.34V4h9.34z"/></svg>
+                            </button>
+                        </span>
+                    </th>
                 </tr>
             </thead>
             <tbody id="runs-table-body" data-pending-pagination="1">
@@ -393,8 +396,7 @@
         const sortableHeaders = Array.from(table.querySelectorAll('th[data-sort-key]'));
         const searchInput = document.getElementById('run-search');
         const countEl = document.getElementById('runs-filter-count');
-        const markVisibleBtn = document.getElementById('runs-mark-visible');
-        const clearMarkedBtn = document.getElementById('runs-clear-marked');
+        const markVisibleCheckbox = document.getElementById('runs-mark-visible');
         const deleteMarkedBtn = document.getElementById('runs-delete-marked');
         const pagers = [
             {
@@ -547,7 +549,11 @@
             const visible = visibleRows();
             const selectedVisible = visible.filter(row => selectedRunIDs.has(row.dataset.runId)).length;
             const selectedTotal = selectedRunIDs.size;
-            deleteMarkedBtn.disabled = selectedTotal === 0;
+            deleteMarkedBtn.disabled = selectedVisible === 0;
+            if (markVisibleCheckbox) {
+                markVisibleCheckbox.checked = visible.length > 0 && selectedVisible === visible.length;
+                markVisibleCheckbox.indeterminate = selectedVisible > 0 && selectedVisible < visible.length;
+            }
             countEl.textContent = `${filteredRows().length} run${filteredRows().length === 1 ? '' : 's'}${selectedTotal ? ` • ${selectedTotal} marked` : ''}${selectedVisible && selectedVisible !== selectedTotal ? ` • ${selectedVisible} visible marked` : ''}`;
         }
 
@@ -623,22 +629,20 @@
             render();
         });
 
-        markVisibleBtn.addEventListener('click', () => {
-            for (const row of visibleRows()) selectedRunIDs.add(row.dataset.runId);
-            syncSelectionUI();
-            updateBulkActions();
-        });
-
-        clearMarkedBtn.addEventListener('click', () => {
-            selectedRunIDs.clear();
+        markVisibleCheckbox.addEventListener('change', () => {
+            const shouldMark = markVisibleCheckbox.checked;
+            for (const row of visibleRows()) {
+                if (shouldMark) selectedRunIDs.add(row.dataset.runId);
+                else selectedRunIDs.delete(row.dataset.runId);
+            }
             syncSelectionUI();
             updateBulkActions();
         });
 
         deleteMarkedBtn.addEventListener('click', async () => {
-            const ids = Array.from(selectedRunIDs);
+            const ids = visibleRows().map(row => row.dataset.runId).filter(id => selectedRunIDs.has(id));
             if (ids.length === 0) return;
-            if (!confirm(`Delete ${ids.length} marked run${ids.length === 1 ? '' : 's'} and all associated data? This cannot be undone.`)) return;
+            if (!confirm(`Delete ${ids.length} marked visible run${ids.length === 1 ? '' : 's'} and all associated data? This cannot be undone.`)) return;
             deleteMarkedBtn.disabled = true;
             try {
                 for (const runID of ids) {

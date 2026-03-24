@@ -163,6 +163,47 @@ h2 { font-size: 24px; font-weight: 600; margin-bottom: 16px; }
     font-size: 12px;
 }
 
+.runs-mark-col {
+    width: 56px;
+    text-align: center;
+}
+
+.runs-mark-header {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.runs-mark-cell {
+    text-align: center;
+    vertical-align: middle;
+}
+
+.run-mark-checkbox {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--accent);
+    cursor: pointer;
+}
+
+.runs-header-trash {
+    background: none;
+    border: none;
+    color: var(--red);
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    opacity: 0.95;
+}
+
+.runs-header-trash:disabled {
+    color: var(--text-secondary);
+    opacity: 0.45;
+    cursor: default;
+}
+
 .btn-delete {
     margin-left: auto;
     background: none;
