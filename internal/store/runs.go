@@ -266,6 +266,50 @@ func (db *DB) GetRunByName(projectID, name string) (*Run, error) {
 	return db.GetRun(id)
 }
 
+func (db *DB) ResolveRunRef(projectID, ref string) (*Run, error) {
+	run, err := db.GetRun(ref)
+	if err == nil {
+		if run.ProjectID != projectID {
+			return nil, sql.ErrNoRows
+		}
+		return run, nil
+	}
+	if err != sql.ErrNoRows {
+		return nil, err
+	}
+
+	var nameCount int
+	err = db.QueryRow("SELECT COUNT(*) FROM runs WHERE project_id = ? AND name = ? AND deleted_at IS NULL", projectID, ref).Scan(&nameCount)
+	if err != nil {
+		return nil, err
+	}
+	if nameCount == 1 {
+		return db.GetRunByName(projectID, ref)
+	}
+	if nameCount > 1 {
+		return nil, fmt.Errorf("ambiguous run reference %q: matched %d runs by name", ref, nameCount)
+	}
+
+	var displayNameCount int
+	err = db.QueryRow("SELECT COUNT(*) FROM runs WHERE project_id = ? AND display_name = ? AND deleted_at IS NULL", projectID, ref).Scan(&displayNameCount)
+	if err != nil {
+		return nil, err
+	}
+	if displayNameCount == 1 {
+		var id string
+		err = db.QueryRow("SELECT id FROM runs WHERE project_id = ? AND display_name = ? AND deleted_at IS NULL", projectID, ref).Scan(&id)
+		if err != nil {
+			return nil, err
+		}
+		return db.GetRun(id)
+	}
+	if displayNameCount > 1 {
+		return nil, fmt.Errorf("ambiguous run reference %q: matched %d runs by display_name", ref, displayNameCount)
+	}
+
+	return nil, sql.ErrNoRows
+}
+
 func (db *DB) ListRuns(projectID string) ([]*Run, error) {
 	rows, err := db.Query(fmt.Sprintf(`SELECT r.id, r.project_id, r.name, r.display_name,
 		%s, %s, r.state,

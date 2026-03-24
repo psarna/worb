@@ -45,11 +45,11 @@ forks = [
 ]
 
 for child_name, fork_step, total_steps, learning_rate in forks:
-    print(f"=== Forking {child_name} from {parent_run_name} at step {fork_step} ===")
+    print(f"=== Forking {child_name} from {parent_run_name} ({run.id}) at step {fork_step} ===")
     child_run = wandb.init(
         project="fork-test",
         name=child_name,
-        fork_from=f"{parent_run_name}?_step={fork_step}",
+        fork_from=f"{run.id}?_step={fork_step}",
         config={
             "learning_rate": learning_rate,
         },

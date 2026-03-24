@@ -146,7 +146,7 @@ func (r *mutationResolver) UpsertBucket(ctx context.Context, input *UpsertBucket
 			return nil, fmt.Errorf("upsert run: %w", err)
 		}
 
-		// Look up parent run by name
+		// Look up parent run by exact ID first, then unique name/display_name
 		entityStr := params.Entity
 		if entityStr == "" {
 			entityStr = "local"
@@ -159,7 +159,7 @@ func (r *mutationResolver) UpsertBucket(ctx context.Context, input *UpsertBucket
 		if err != nil {
 			return nil, fmt.Errorf("ensure project for fork: %w", err)
 		}
-		parentRun, err := r.Store.GetRunByName(proj.ID, bp.RunID)
+		parentRun, err := r.Store.ResolveRunRef(proj.ID, bp.RunID)
 		if err != nil {
 			return nil, fmt.Errorf("fork parent run not found: %s", bp.RunID)
 		}
